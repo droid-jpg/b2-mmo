@@ -1,0 +1,11 @@
+# Build output
+build/
+dist/
+scratch/
+
+# Never commit game data, saves or dumps
+*.nds
+*.sav
+*.SaveRAM
+*.State
+*.bin
