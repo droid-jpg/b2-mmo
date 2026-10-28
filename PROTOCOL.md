@@ -1,0 +1,58 @@
+# Black 2 MMO wire protocol (v1)
+
+The same frames as [oras-mmo](https://github.com/droid-jpg/oras-mmo/blob/main/PROTOCOL.md), so the same relay server
+runs both games (in different rooms). What the fields mean in Black 2 is noted under the table.
+
+TCP, little-endian, **fixed 48-byte frames**. Every frame starts with:
+
+| Off | Type | Field |
+|---|---|---|
+| 0 | u8 | `type` |
+| 1 | u8 | `player` — sender ID. Clients send 0; the server overwrites it with the real sender ID before relaying, so IDs can't be spoofed. |
+| 2 | u16 | `proto` — protocol version (1) |
+
+## Frame types
+
+| Type | Name | Direction | Payload (offset 4..47) |
+|---|---|---|---|
+| 1 | HELLO | client → server | `room[12]` (4..15), `name[16]` (16..31) — NUL-padded ASCII |
+| 2 | WELCOME | server → client | `player` = your ID; `max_players` u8 at 4 |
+| 3 | STATE | both | `map` u16 @4, `facing` u16 @6, `x` f32 @8, `z` f32 @12 (height), `y` f32 @16, `aux` u32 @20 (raw u32 from player+0x08, meaning not yet known), `seq` u32 @24, `dirX` f32 @28, `dirY` f32 @32 (unit facing vector in map X/Y; both 0 = unknown, use `facing`), `anim` u8 @36 (sender's animation id from its move model +0x58: 0 idle, 0x10 walk; 0 from older clients), `model` u16 @38 (sender's player model: 0xAC Brendan, 0xAB May; 0 = unknown), `status` u8 @37 (bit 0 busy: under script control for 2+ s (soaring, battle, cutscene) or off the field (then position = last field spot); bit 1 riding a bike, bit 2 surfing, bit 3 "no warp": a map change now is Fly, Teleport, Dig, Escape Rope, soaring or a whiteout, not a walk through a door or map edge, so receivers don't learn it as a door — set for 5 s after a menu, 2 s+ of script control or 3 s+ off the field), `time` u32 @40 (sender clock in ms, for interpolation; 0 from older clients) |
+| 4 | CHAT | both | `text[40]` (4..43) |
+| 5 | JOIN | server → client | `player` = who joined; `name[16]` (4..19) |
+| 6 | LEAVE | server → client | `player` = who left |
+| 7 | ERROR | server → client | `code` u8 @4 (1 = room full, 2 = bad hello, 3 = version mismatch) |
+| 8 | PING | client → server | none (keep-alive; not relayed) |
+| 9 | GREET | both | `text[40]` (4..43) — what the sender says when someone talks to them. Sent after WELCOME, whenever it changes, and again when someone joins (the server keeps no state). |
+| 10 | TALK | both | `target` u8 @4 — the sender pressed A facing player `target`; only the target reacts (a notice). |
+| 11 | BATTLE | both | The sender's battle, sent on every change and every 2 s while it lasts: `side` u8 @4 (0 = the sender's team, 1 = the opponent), `count` u8 @5, then `count` (≤ 6) entries of 7 bytes from @6: `species` u16, `hp` u16, `maxHp` u16, `level` u8. Entry 0 is the Pokémon out. `count` 0 = the battle is over. |
+| 12 | TRADE | both | One step of a trade, for player `target` u8 @5 only: `op` u8 @4 (1 OFFER, 2 ACCEPT, 3 CANCEL, 4 COMMIT). OFFER: `chunk` u8 @6 of `chunks` u8 @7 (7), 40 bytes of the offered Pokémon @8 (0x104 bytes in all: encrypted 0xE8 data + 0x1C party stats, as the game stores them). ACCEPT: u32 @8 = FNV-1a over both offers (lower player id's first). COMMIT comes only from the server: once both players have sent ACCEPT for each other with the same hash, it sends COMMIT (`player` = the partner, same hash) to both at once; an OFFER or CANCEL from either side, or either leaving, clears pending accepts. A game swaps only on COMMIT (and ignores COMMIT from clients, which the server never relays). |
+| 13 | EVENT | both | Something happened in the sender's game, shown to friends as a notice: `kind` u8 @4 (1 CAUGHT: `species` u16 @6 was caught; 2 EVOLVED: `from` u16 @8 evolved into `species`; 3 BADGE: `value` u8 @5 = badge number 1..8, in the order the gyms are beaten). |
+| 14 | PARTY | both | The sender's party, for player `target` u8 @5 only: `op` u8 @4 (1 REQUEST: send me yours; 2 DATA). DATA: `piece` u8 @6 = slot × 7 + chunk, `count` u8 @7 (Pokémon in the party, eggs left out; 0 = none), 40 bytes @8 (each Pokémon is 0x104 bytes as the game stores it, like a trade offer). Asked for when a friend joins and whenever you talk to them; used to battle their team. `op` 3 LIVE: like DATA, but the whole party as the game has it (eggs too, in order), sent unasked right before a live battle CHALLENGE or ACCEPT. |
+| 15 | LIVE | both | A live battle with player `target` u8 @5 only: `op` u8 @4. 1 CHALLENGE: `seed` u32 @8, the battle RNG seed both games use (the challenger is the host); 2 ACCEPT; 3 CANCEL (declined, called off, or left: the other side's AI takes over); 4 ACTION: one answer to the battle, `step` u16 @6 (counts from 0 per battle), `cmd` u8 @8 (the battle's command: 3 pick an action, 5/6 pick a Pokémon to send in), `count` u8 @9, `check` u32 @12 (FNV-1a over species/HP of both teams, the host's first, when the step was asked; 0 = unknown), `count` (≤ 6) u32 action words @16 as the sender's battle wrote them (low nibble 1 move: target bits 4..7, move id bits 8..23; 2 item; 3 switch: position bits 4..6, party slot bits 7..9). Each game answers every step for its own side. |
+
+## Flow
+
+1. Client connects and sends HELLO within 5 s.
+2. Server replies WELCOME, then sends a JOIN for every player already in the room,
+   then broadcasts a JOIN for the new player to everyone else.
+3. Clients send STATE about 15×/s while moving and at least once per second while idle.
+   The server relays STATE, CHAT, GREET, TALK, BATTLE, TRADE, EVENT, PARTY and LIVE to everyone else in the room.
+4. On disconnect, or after 10 s of silence, the server broadcasts LEAVE.
+
+Positions are map-local; clients only draw players whose `map` matches their own.
+
+## Black 2
+
+- **STATE**: `map` is the zone id, `facing` 0 up 1 down 2 left 3 right, `x`/`z`/`y` the world
+  position in units (16 a tile; `z` @12 is the height, `y` @16 is Black 2's z, depth), `aux` u32 @20
+  is the zone's **map matrix** (0 and 175 are the overworld: zones of one of those share
+  coordinates, so friends there are drawn even in another zone), `model` the object code of the
+  sender's player actor (231 Nate, 240 Rosa, others on a bike), `anim` 0x10 while moving, `status`
+  bit 0 busy (menu, text box, battle, cutscene), bit 1 bike, bit 2 surfing, bit 3 no warp.
+  `time` is the sender's emulated clock (frames × 1000 / 60).
+- **TRADE** / **PARTY**: a Pokémon is 0xDC bytes as Black 2's party stores it (encrypted, with its
+  party stats), sent in 6 chunks of 40 bytes (`chunks` = 6). PARTY `piece` = slot × 6 + chunk.
+  PARTY op 1 REQUEST is sent when a friend joins and when you talk to them; op 2 DATA answers it.
+- **EVENT** BADGE: `value` = the number of badges now.
+- Not used yet in Black 2: BATTLE (watching a friend's battle) and LIVE (live battles).
