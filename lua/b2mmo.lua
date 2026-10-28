@@ -590,6 +590,7 @@ local battle = { with = nil }
 
 local function startBattle(id)
   local f = friends[id]
+  battle.onEnd = nil
   if not f then addNotice("Pick a friend first.") return end
   if not me.ready then addNotice("Get back to walking around first.") return end
   if not f.party then
@@ -620,7 +621,13 @@ local function checkBattle()
     local m = PKM.decode(irBytes(ADDR.afterParty + 8 + i * 0xDC, 0xDC))
     if m and not m.isEgg and m.hp > 0 then alive = true end
   end
-  addNotice((alive and "You beat " or "You lost to ") .. (battle.with or "your friend") .. "'s team! (Your party is back as it was.)")
+  if battle.onEnd then -- a feature's battle (live battles) says it its own way
+    local fn = battle.onEnd
+    battle.onEnd = nil
+    fn(alive)
+  else
+    addNotice((alive and "You beat " or "You lost to ") .. (battle.with or "your friend") .. "'s team! (Your party is back as it was.)")
+  end
   battle.with = nil
 end
 
