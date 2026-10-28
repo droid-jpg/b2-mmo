@@ -55,9 +55,21 @@ typedef struct {
     u8 writeData[0xDC]; // 0x300 Lua: a Pokemon as the party stores it (encrypted, 0xDC bytes)
 } MmoShared;
 
-// Bigger buffers after the shared block and the code (ITCM up to 0x02000000)
-#define MMO_BATTLE_NAME ((u16 *)0x01FFAF00)  // Lua: the friend's name, 0xFFFF-terminated (16 max)
-#define MMO_BATTLE_PARTY ((u8 *)0x01FFB000)  // Lua: their party, battleCount x 0xDC
-#define MMO_PARTY_BACKUP ((u8 *)0x01FFB600)  // game: our party (8 + 6 x 0xDC) and cash before the battle
-#define MMO_AFTER_PARTY ((u8 *)0x01FFBC00)   // game: our party as the battle left it
+// ITCM memory map (0x01FFA000..0x02000000; the game's own ITCM code ends at 0x01FF93A0):
+//   0x01FFA000 this shared block      0x01FFA400 code + bss, up to MMO_CODE_END (arm/link.ld)
+//   0x01FFD800 friend battle buffers  0x01FFE800 one block per feature, laid out in arm/<feature>.h
+// lua/b2mmo.lua has the same addresses in ADDR: keep both in step.
+#define MMO_CODE_END 0x01FFD800
+#define MMO_BATTLE_NAME ((u16 *)0x01FFD800)  // Lua: the friend's name, 0xFFFF-terminated (16 max)
+#define MMO_BATTLE_PARTY ((u8 *)0x01FFD840)  // Lua: their party, battleCount x 0xDC
+#define MMO_PARTY_BACKUP ((u8 *)0x01FFDD80)  // game: our party (8 + 6 x 0xDC) before the battle
+#define MMO_AFTER_PARTY ((u8 *)0x01FFE2C0)   // game: our party as the battle left it
 #define MMO_PARTY_BYTES (8 + 6 * 0xDC)
+
+#define MMO_TALK_AREA 0x01FFE800   // 0x400 talking in the game's text box, its choice list
+#define MMO_LIVE_AREA 0x01FFEC00   // 0x800 live battles
+#define MMO_WATCH_AREA 0x01FFF400  // 0x200 watching a friend's battle
+#define MMO_EVOLVE_AREA 0x01FFF600 // 0x100 trade evolutions
+#define MMO_CHAT_AREA 0x01FFF700   // 0x200 typing chat in the game
+#define MMO_RIDE_AREA 0x01FFF900   // 0x100 friends on a bike or surfing
+                                   // 0x01FFFA00..0x02000000 spare

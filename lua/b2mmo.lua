@@ -43,6 +43,9 @@ local MAGIC = 0x4D4D3242
 local G_GAMESYSTEM = 0x021410F4
 local SLOT0, SLOTSZ, NSLOTS = SH + 0x80, 0x30, 8
 local OBJ_HERO, OBJ_HEROINE = 231, 240
+-- ITCM memory map, as in arm/shared.h
+local ADDR = { battleName = 0x01FFD800, battleParty = 0x01FFD840, partyBackup = 0x01FFDD80, afterParty = 0x01FFE2C0,
+  talk = 0x01FFE800, live = 0x01FFEC00, watch = 0x01FFF400, evolve = 0x01FFF600, chat = 0x01FFF700, ride = 0x01FFF900 }
 
 local function r8(a) return memory.read_u8(a, SB) end
 local function r32(a) return memory.read_u32_le(a, SB) end
@@ -52,6 +55,13 @@ local function is32(a) return memory.read_s32_le(a - ITCM, IT) end
 local function iw32(a, v) memory.write_u32_le(a - ITCM, v & 0xFFFFFFFF, IT) end
 local function iw16(a, v) memory.write_u16_le(a - ITCM, v, IT) end
 local function inRam(a) return a >= 0x02000000 and a < 0x02400000 end
+local function irBytes(a, n)
+  local t = memory.read_bytes_as_array(a - ITCM, n, IT)
+  local s = {}
+  for i = 1, n do s[i] = string.char(t[i]) end
+  return table.concat(s)
+end
+local function iwBytes(a, s) for i = 1, #s do memory.writebyte(a - ITCM + i - 1, s:byte(i), IT) end end
 local function readBytes(a, n)
   local t = memory.read_bytes_as_array(a, n, SB)
   local s = {}
@@ -88,7 +98,7 @@ end
 ----------------------------------------------------------------------------------------------
 local FRAME, PROTO = 48, 1
 local T = { HELLO = 1, WELCOME = 2, STATE = 3, CHAT = 4, JOIN = 5, LEAVE = 6, ERROR = 7, PING = 8, GREET = 9,
-  TALK = 10, TRADE = 12, EVENT = 13, PARTY = 14 }
+  TALK = 10, BATTLE = 11, TRADE = 12, EVENT = 13, PARTY = 14, LIVE = 15 }
 local PARTY = { REQUEST = 1, DATA = 2 }
 local TRADE = { OFFER = 1, ACCEPT = 2, CANCEL = 3, COMMIT = 4 }
 
@@ -139,6 +149,8 @@ local seen = { badges = nil, party = {} }
 local trade = { partner = nil, mySlot = nil, myRaw = nil, theirRaw = nil, theirChunks = {}, accepted = false,
   commitHash = nil }
 local form = {}
+-- Features (lua/features/*.lua), loaded at the end: see "Features" below for what they get and can hook
+local features = {}
 
 local function zoneName(z) return ZONES[z] or ("Zone " .. tostring(z)) end
 local function speciesName(s) return SPECIES[s] or ("#" .. tostring(s)) end
@@ -335,6 +347,11 @@ local function onFrame(fr)
     net.status = code == 1 and "room full" or code == 3 and "server version differs" or "server refused"
     addNotice("Server: " .. net.status)
   end
+  -- Features see every frame after the above (on LEAVE the friend is already gone: f is nil)
+  for _, ft in ipairs(features) do
+    local h = ft.onFrame and ft.onFrame[type]
+    if h then h(friends[id], id, fr) end
+  end
 end
 
 local function pumpNet()
@@ -514,6 +531,10 @@ local function checkTalk()
     if f.drawX and math.floor(f.drawX / 16) == tx and math.floor(f.drawZ / 16) == tz and math.abs(f.drawY - me.y) < 16 then
       send(frame(T.TALK, string.pack("<B", id)))
       requestParty(id)
+      -- A feature can take the conversation over (the game's own text box)
+      for _, ft in ipairs(features) do
+        if ft.onTalk and ft.onTalk(f, id) then return end
+      end
       local g = f.greet ~= "" and f.greet or "..."
       addNotice(f.name .. ": " .. g)
       return
@@ -578,11 +599,11 @@ local function startBattle(id)
   end
   if #f.party == 0 then addNotice(f.name .. " has no Pokemon to battle with.") return end
   for i, raw in ipairs(f.party) do
-    for k = 0, 0xDB do memory.writebyte(0x01FFB000 + (i - 1) * 0xDC + k - ITCM, raw:byte(k + 1), IT) end
+    iwBytes(ADDR.battleParty + (i - 1) * 0xDC, raw:sub(1, 0xDC))
   end
   local name = f.name:sub(1, 12)
-  for i = 1, #name do iw16(0x01FFAF00 + (i - 1) * 2, name:byte(i)) end
-  iw16(0x01FFAF00 + #name * 2, 0xFFFF)
+  for i = 1, #name do iw16(ADDR.battleName + (i - 1) * 2, name:byte(i)) end
+  iw16(ADDR.battleName + #name * 2, 0xFFFF)
   iw32(SH + 0x70, f.model == OBJ_HEROINE and 363 or 360)
   iw32(SH + 0x74, #f.party)
   iw32(SH + 0x6C, 0)
@@ -593,13 +614,10 @@ end
 local function checkBattle()
   if ir32(SH + 0x6C) ~= 2 then return end
   iw32(SH + 0x6C, 0)
-  local count = memory.read_u32_le(0x01FFBC04 - ITCM, IT)
+  local count = ir32(ADDR.afterParty + 4)
   local alive = false
   for i = 0, math.min(count, 6) - 1 do
-    local t = memory.read_bytes_as_array(0x01FFBC08 + i * 0xDC - ITCM, 0xDC, IT)
-    local raw = {}
-    for k = 1, 0xDC do raw[k] = string.char(t[k]) end
-    local m = PKM.decode(table.concat(raw))
+    local m = PKM.decode(irBytes(ADDR.afterParty + 8 + i * 0xDC, 0xDC))
     if m and not m.isEgg and m.hp > 0 then alive = true end
   end
   addNotice((alive and "You beat " or "You lost to ") .. (battle.with or "your friend") .. "'s team! (Your party is back as it was.)")
@@ -689,13 +707,18 @@ local function who()
   end
 end
 
-local function sendChat()
-  local text = forms.gettext(form.input)
+-- Says something in the chat (or runs /who), from the window or a feature
+local function say(text)
   if text == nil or text == "" then return end
-  forms.settext(form.input, "")
   if text == "/who" then who() return end
   send(frame(T.CHAT, pad(text, 40)))
   addNotice(cfg.name .. ": " .. text:sub(1, 40))
+end
+
+local function sendChat()
+  local text = forms.gettext(form.input)
+  forms.settext(form.input, "")
+  say(text)
 end
 
 local function selectedId(dropdown)
@@ -726,7 +749,7 @@ local function acceptTrade()
 end
 
 local function buildForm()
-  form.id = forms.newform(380, 510, "Black 2 MMO " .. VERSION, function() form.id = nil end)
+  form.id = forms.newform(380, 720, "Black 2 MMO " .. VERSION, function() form.id = nil end)
   forms.label(form.id, "Chat (/who lists who's online)", 8, 8, 360, 18)
   form.log = forms.textbox(form.id, "", 350, 200, nil, 8, 28, true, false, "Vertical")
   form.input = forms.textbox(form.id, "", 270, 22, nil, 8, 234)
@@ -745,6 +768,11 @@ local function buildForm()
   forms.button(form.id, "Accept", acceptTrade, 124, 354, 110, 28)
   forms.button(form.id, "Call off", function() cancelTrade(false) end, 240, 354, 118, 28)
   form.tradeLabel = forms.label(form.id, "", 8, 424, 360, 40)
+  -- Features add their controls below, each from the y the previous one stopped at
+  local y = 470
+  for _, ft in ipairs(features) do
+    if ft.buildForm then y = ft.buildForm(form.id, y) or y end
+  end
 end
 
 local function updateTradeLabel()
@@ -755,6 +783,47 @@ local function updateTradeLabel()
       ", you get " .. (trade.theirRaw and monLabel(trade.theirRaw) or "(waiting)") .. (trade.accepted and "  [accepted]" or "")
   end
   forms.settext(form.tradeLabel, s)
+end
+
+----------------------------------------------------------------------------------------------
+-- Features
+----------------------------------------------------------------------------------------------
+-- Each lua/features/<name>.lua returns function(api) -> a table with any of these hooks:
+--   tick()                      every frame, after the core's own work (also while offline)
+--   draw()                      every frame, after the core's drawing (gui.* on the screen)
+--   onFrame = { [T.X] = fn(f, id, fr) }  every received frame of that type, after the core
+--   onTalk(f, id) -> true       A was pressed facing friend f: return true to take it over
+--   buildForm(formId, y) -> y   add controls to the window from y down, return the next free y
+-- api.actions is what talking to a friend can lead to: { label, run = fn(f, id) }, in order.
+-- api.talkInfo holds fn(f, id) -> lines or nil, extra things to say about a friend when talked to.
+local FEATURES = { "talk", "live", "watch", "evolve", "doors", "chat", "ride" }
+local api = {
+  cfg = cfg, T = T, PARTY = PARTY, TRADE = TRADE, ADDR = ADDR, SH = SH, ITCM = ITCM, SB = SB, IT = IT,
+  OBJ_HERO = OBJ_HERO, OBJ_HEROINE = OBJ_HEROINE, DIRV = DIRV, PKM = PKM,
+  net = net, me = me, friends = friends, trade = trade, battle = battle, form = form,
+  r8 = r8, r32 = r32, w32 = w32, ir32 = ir32, is32 = is32, iw32 = iw32, iw16 = iw16, inRam = inRam,
+  readBytes = readBytes, irBytes = irBytes, iwBytes = iwBytes,
+  frame = frame, send = send, cstr = cstr, pad = pad, now = now, say = say,
+  addNotice = addNotice, zoneName = zoneName, speciesName = speciesName, partyRaw = partyRaw, monLabel = monLabel,
+  friend = friend, requestParty = requestParty, sameMap = sameMap, project = project,
+  startBattle = startBattle, offerTrade = offerTrade, acceptTrade = acceptTrade, cancelTrade = cancelTrade,
+  actions = { { label = "Battle", run = function(f, id) startBattle(id) end } },
+  talkInfo = {},
+}
+for _, name in ipairs(FEATURES) do
+  local path = DIR .. "features/" .. name .. ".lua"
+  local fh = io.open(path, "r")
+  if fh then
+    fh:close()
+    local ok, mod = pcall(dofile, path)
+    if ok and type(mod) == "function" then ok, mod = pcall(mod, api) end
+    if ok and type(mod) == "table" then
+      mod.name = name
+      features[#features + 1] = mod
+    elseif not ok then
+      console.log("Black 2 MMO: feature " .. name .. " failed: " .. tostring(mod))
+    end
+  end
 end
 
 ----------------------------------------------------------------------------------------------
@@ -782,12 +851,15 @@ while true do
   end
   checkBattle()
   updateFriends()
+  for _, ft in ipairs(features) do if ft.tick then ft.tick() end end
   gui.clearGraphics()
   drawLabels()
   drawNotice()
   drawList()
+  for _, ft in ipairs(features) do if ft.draw then ft.draw() end end
   updateTradeLabel()
-  if B2MMO_TEST then B2MMO_TEST({ me = me, friends = friends, net = net, trade = trade, form = form,
-    offerTrade = offerTrade, acceptTrade = acceptTrade, startBattle = startBattle, partyRaw = partyRaw, monLabel = monLabel }) end
+  if B2MMO_TEST then B2MMO_TEST({ me = me, friends = friends, net = net, trade = trade, form = form, api = api,
+    features = features, offerTrade = offerTrade, acceptTrade = acceptTrade, startBattle = startBattle,
+    partyRaw = partyRaw, monLabel = monLabel }) end
   emu.frameadvance()
 end

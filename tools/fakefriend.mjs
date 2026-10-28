@@ -2,7 +2,7 @@
 // Usage: node tools/fakefriend.mjs [--server 127.0.0.1] [--port 7777] [--room UNOVA] [--name Bot]
 //          [--zone 64] [--matrix 0] [--x 568] [--y 16] [--z 200] [--path square|line|stand]
 //          [--size 3] [--speed 2] [--model 240] [--busy] [--chat "hi"] [--greet "text"]
-//          [--events] [--trade <party.bin>] [--party <party.bin>] [--listen]
+//          [--events] [--trade <party.bin>] [--party <party.bin>] [--listen] [--plugin a,b]
 // Positions are world units (16 a tile; y is height). --size tiles per side, --speed units per
 // frame at 60 fps (1 walk, 2 run). --model the object code: 231 Nate, 240 Rosa.
 // --events sends a catch, an evolution and a badge after 3 s. --trade answers a trade offer by
@@ -28,7 +28,7 @@ const opt = {
 };
 
 const FRAME = 48;
-const T = { HELLO: 1, WELCOME: 2, STATE: 3, CHAT: 4, JOIN: 5, LEAVE: 6, ERROR: 7, PING: 8, GREET: 9, TALK: 10, TRADE: 12, EVENT: 13, PARTY: 14 };
+const T = { HELLO: 1, WELCOME: 2, STATE: 3, CHAT: 4, JOIN: 5, LEAVE: 6, ERROR: 7, PING: 8, GREET: 9, TALK: 10, BATTLE: 11, TRADE: 12, EVENT: 13, PARTY: 14, LIVE: 15 };
 
 function sendParty(to) {
   const data = args.party ? fs.readFileSync(args.party) : Buffer.alloc(0);
@@ -48,6 +48,8 @@ const frame = (type) => { const b = Buffer.alloc(FRAME); b[0] = type; b.writeUIn
 const cstr = (b, o, n) => { const s = b.subarray(o, o + n); const z = s.indexOf(0); return s.subarray(0, z < 0 ? n : z).toString('latin1'); };
 const names = {};
 let myId = 0;
+// What plugins can change about us: busy (status bit 0), hold (stop walking)
+const me = { busy: false, hold: false };
 
 const sock = net.connect(opt.port, opt.server, () => {
   const h = frame(T.HELLO);
@@ -62,6 +64,16 @@ function greet() {
   const g = frame(T.GREET);
   g.write(opt.greet.slice(0, 39), 4, 'latin1');
   sock.write(g);
+}
+
+// Plugins (--plugin a,b loads tools/ff/a.mjs, tools/ff/b.mjs; see tools/ff/README.md)
+const plugins = [];
+for (const name of String(args.plugin ?? '').split(',').filter(Boolean)) {
+  const mod = await import(new URL(`./ff/${name}.mjs`, import.meta.url));
+  plugins.push(mod.default({
+    sock, frame, send: (b) => sock.write(b), T, opt, args, myId: () => myId, names, fs,
+    state: () => Object.assign(me, { x: px, z: pz, dir, zone: opt.zone }),
+  }));
 }
 
 // Trade: answer an offer with our own and accept.
@@ -114,6 +126,7 @@ sock.on('data', (d) => {
       case T.EVENT: console.log(`event #${id} kind=${f[4]} value=${f[5]} species=${f.readUInt16LE(6)} from=${f.readUInt16LE(8)}`); break;
       case T.ERROR: console.log(`error ${f[4]}`); break;
     }
+    for (const p of plugins) p.onFrame?.(f, id);
   }
 });
 
@@ -127,7 +140,7 @@ const start = Date.now();
 setInterval(() => {
   if (!myId) return;
   const legs = opt.path === 'line' ? line : square;
-  moving = opt.path !== 'stand';
+  moving = opt.path !== 'stand' && !me.hold;
   if (moving) {
     // 66 ms per update = 4 frames
     const step = Math.min(legLeft, opt.speed * 4);
@@ -139,12 +152,13 @@ setInterval(() => {
   s.writeUInt16LE(opt.zone, 4); s.writeUInt16LE(dir, 6);
   s.writeFloatLE(px, 8); s.writeFloatLE(opt.y, 12); s.writeFloatLE(pz, 16);
   s.writeUInt32LE(opt.matrix, 20); s.writeUInt32LE(++seq, 24);
-  s[36] = moving ? 0x10 : 0; s[37] = opt.busy ? 1 : 0; s.writeUInt16LE(opt.model, 38);
+  s[36] = moving ? 0x10 : 0; s[37] = opt.busy || me.busy ? 1 : 0; s.writeUInt16LE(opt.model, 38);
   s.writeUInt32LE((Date.now() - start) >>> 0, 40);
   sock.write(s);
 }, 66);
 
 setInterval(() => sock.write(frame(T.PING)), 3000);
+setInterval(() => { for (const p of plugins) p.tick?.(); }, 66);
 
 if (args.chat) setTimeout(() => { const c = frame(T.CHAT); c.write(String(args.chat).slice(0, 39), 4, 'latin1'); sock.write(c); }, 3000);
 if (args.events) {

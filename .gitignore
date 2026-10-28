@@ -9,3 +9,5 @@ scratch/
 *.SaveRAM
 *.State
 *.bin
+# BizHawk test output (logs, screenshots, per-checkout config)
+test/out/

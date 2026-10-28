@@ -9,6 +9,7 @@
 // the slot and the friend walks, runs and turns smoothly.
 #include "game.h"
 #include "shared.h"
+#include "features.h"
 
 static FldCommActEntry sEntries[MMO_SLOTS];
 static FldCommActSys sActSys;
@@ -137,6 +138,7 @@ static void tick(GameSystem *gsys) {
             GridPos t;
             FldAct_GetGPos(e->actor, &t);
             SetActorCollisionEnabled(e->actor, t.x != myTile.x || t.z != myTile.z);
+            ride_slot(i, slot, e->actor);
         }
     }
 }
@@ -184,12 +186,14 @@ static u32 friendBattleEvent(GameEvent *event, u32 *state, void *data) {
             if (trainers[1] != 0 && ((void **)trainers[1])[5] != 0) GFL_StrBufLoadString(((void **)trainers[1])[5], MMO_BATTLE_NAME);
             if (names[1] != 0) GFL_StrBufLoadString(names[1], MMO_BATTLE_NAME);
         }
+        live_battle_setup(battle, setup);
         sh->battleState = 1;
         GameEvent_ChainNext(event, battle);
         (*state)++;
         return 0;
     }
     case 1:
+        live_battle_end();
         copyBytes(MMO_AFTER_PARTY, party, MMO_PARTY_BYTES);
         copyBytes(party, MMO_PARTY_BACKUP, MMO_PARTY_BYTES);
         info[0] = w->cash;
@@ -208,12 +212,26 @@ GameEvent *mmo_provider(GameSystem *gsys, void *data) {
 
     if (sh->magic == MMO_MAGIC) {
         tick(gsys);
+        talk_tick(gsys);
+        live_tick(gsys);
+        watch_tick(gsys);
+        evolve_tick(gsys);
+        chat_tick(gsys);
+        ride_tick(gsys);
         if (sh->battleReq && sh->ready && sh->battleCount > 0) {
             sh->battleReq = 0;
             GameEvent *ev = GameEvent_Create(gsys, 0, friendBattleEvent, sizeof(FriendBattleWork));
             ((FriendBattleWork *)GameEvent_GetData(ev))->gsys = gsys;
             return ev;
         }
+        GameEvent *ev = 0;
+        if (sh->ready) {
+            if (ev == 0) ev = talk_event(gsys);
+            if (ev == 0) ev = live_event(gsys);
+            if (ev == 0) ev = evolve_event(gsys);
+            if (ev == 0) ev = chat_event(gsys);
+        }
+        if (ev != 0) return ev;
     }
     return orig != 0 ? orig(gsys, data) : 0;
 }

@@ -7,6 +7,6 @@ SECTIONS
     .data : { *(.data*) }
     .bss : { __bss_start = .; *(.bss*) *(COMMON) __bss_end = .; }
     __image_end = .;
-    ASSERT(__image_end <= 0x01FFAF00, "mod code runs into the battle buffers")
+    ASSERT(__image_end <= 0x01FFD800, "mod code runs into the battle buffers (MMO_CODE_END)")
     /DISCARD/ : { *(.ARM.*) *(.comment) *(.note*) }
 }
