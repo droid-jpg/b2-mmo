@@ -55,4 +55,10 @@ Positions are map-local; clients only draw players whose `map` matches their own
   party stats), sent in 6 chunks of 40 bytes (`chunks` = 6). PARTY `piece` = slot × 6 + chunk.
   PARTY op 1 REQUEST is sent when a friend joins and when you talk to them; op 2 DATA answers it.
 - **EVENT** BADGE: `value` = the number of badges now.
-- Not used yet in Black 2: BATTLE (watching a friend's battle) and LIVE (live battles).
+- **BATTLE**: as in ORAS (two frames, side 0 then side 1, on every change and every 2 s; one frame
+  with `count` 0 when the battle ends). Side 0 is the sender's own client's party, side 1 the
+  opponent client's (a wild Pokémon, a trainer, a friend's team); in a double battle the first two
+  entries are the ones out. HP is what the battle screen shows. Status conditions are not sent (no room
+  in the frame). Receivers keep a friend's battle while their STATE busy bit is set and BATTLE frames
+  keep coming (6 s).
+- Not used yet in Black 2: LIVE (live battles).
