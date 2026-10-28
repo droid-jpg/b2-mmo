@@ -72,3 +72,19 @@ typedef struct { s16 x, y, z, unk6; } GridPos;
 #define FldAct_GetGPos THUMB(0x02167294, void (*)(FieldActor *, GridPos *))
 // FALSE sets actor flag 0x80: others walk through it (the game's default for these actors)
 #define SetActorCollisionEnabled THUMB(0x02167580, void (*)(FieldActor *, u32))
+
+// Events (system/game_event.h). A callback returns GAMEEVENT_CONTINUE (0) or GAMEEVENT_DONE (1).
+typedef u32 (*GameEventCallback)(GameEvent *event, u32 *state, void *data);
+#define GameEvent_Create THUMB(0x02016CB4, GameEvent *(*)(GameSystem *, GameEvent *, GameEventCallback, u32))
+#define GameEvent_ChainNext THUMB(0x02016D68, void (*)(GameEvent *, GameEvent *))
+#define GameEvent_GetData THUMB(0x02016EDC, void *(*)(GameEvent *))
+#define GSYS_GetEventRunningFlag THUMB(0x02016ABC, u32 (*)(GameSystem *))
+
+// ov012 event_battle.c: a trainer battle (style 0 single); flags bit 0 = losing doesn't black out.
+// Its work (GameEvent_GetData) holds the BtlSetup* at +8.
+#define EventTrainerBattleCall_Create     THUMB(0x021686CC, GameEvent *(*)(GameSystem *, Field *, u32, u32, u32, u32, u32))
+#define BtlSetup_GetParty THUMB(0x02017D10, void *(*)(void *, u32))
+#define PokeParty_RecoverAll THUMB(0x02020F0C, void (*)(void *))
+#define GFL_StrBufLoadString THUMB(0x02048614, void (*)(void *, const u16 *))
+// ov036: the fade back into the field that battles started outside a script need
+#define CallFieldMapEntranceInTransition     THUMB(0x021B878C, GameEvent *(*)(GameSystem *, Field *, u32, u32, u32, u8, u8))

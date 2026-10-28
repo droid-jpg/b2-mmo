@@ -7,6 +7,6 @@ SECTIONS
     .data : { *(.data*) }
     .bss : { __bss_start = .; *(.bss*) *(COMMON) __bss_end = .; }
     __image_end = .;
-    ASSERT(__image_end <= 0x01FFFF00, "mod code does not fit in ITCM")
+    ASSERT(__image_end <= 0x01FFAF00, "mod code runs into the battle buffers")
     /DISCARD/ : { *(.ARM.*) *(.comment) *(.note*) }
 }

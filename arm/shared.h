@@ -45,8 +45,19 @@ typedef struct {
     u32 caughtNew[4]; // 0x50 game: species caught since the last scan; Lua reads and zeroes them
     u32 writeSlot;    // 0x60 Lua: party slot + 1 to overwrite with writeData (a trade); game zeroes it
     u32 writes;       // 0x64 game: +1 per party write done
-    u32 reserved[6];  // 0x68
+    u32 battleReq;    // 0x68 Lua: 1 = battle the team in battleParty now (cleared when it starts)
+    u32 battleState;  // 0x6C game: 1 battling, 2 over (afterParty holds the party as it ended)
+    u32 battleTrainer;// 0x70 Lua: trainer id the battle is set up from (360 Nate, 363 Rosa)
+    u32 battleCount;  // 0x74 Lua: Pokemon in battleParty
+    u32 reserved[2];  // 0x78
     MmoSlot slots[MMO_SLOTS]; // 0x80
     u8 pad[0x300 - 0x200];
     u8 writeData[0xDC]; // 0x300 Lua: a Pokemon as the party stores it (encrypted, 0xDC bytes)
 } MmoShared;
+
+// Bigger buffers after the shared block and the code (ITCM up to 0x02000000)
+#define MMO_BATTLE_NAME ((u16 *)0x01FFAF00)  // Lua: the friend's name, 0xFFFF-terminated (16 max)
+#define MMO_BATTLE_PARTY ((u8 *)0x01FFB000)  // Lua: their party, battleCount x 0xDC
+#define MMO_PARTY_BACKUP ((u8 *)0x01FFB600)  // game: our party (8 + 6 x 0xDC) and cash before the battle
+#define MMO_AFTER_PARTY ((u8 *)0x01FFBC00)   // game: our party as the battle left it
+#define MMO_PARTY_BYTES (8 + 6 * 0xDC)

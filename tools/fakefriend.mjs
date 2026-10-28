@@ -2,12 +2,13 @@
 // Usage: node tools/fakefriend.mjs [--server 127.0.0.1] [--port 7777] [--room UNOVA] [--name Bot]
 //          [--zone 64] [--matrix 0] [--x 568] [--y 16] [--z 200] [--path square|line|stand]
 //          [--size 3] [--speed 2] [--model 240] [--busy] [--chat "hi"] [--greet "text"]
-//          [--events] [--trade <party.bin>] [--listen]
+//          [--events] [--trade <party.bin>] [--party <party.bin>] [--listen]
 // Positions are world units (16 a tile; y is height). --size tiles per side, --speed units per
 // frame at 60 fps (1 walk, 2 run). --model the object code: 231 Nate, 240 Rosa.
 // --events sends a catch, an evolution and a badge after 3 s. --trade answers a trade offer by
 // offering the first Pokemon of a party dump (tools/dumpparty.lua) and accepting.
-// --listen prints everything received.
+// --party answers team requests (to battle it) with the Pokemon in a file (0xDC bytes each, as
+// the party stores them). --listen prints everything received.
 import net from 'node:net';
 import fs from 'node:fs';
 
@@ -27,7 +28,22 @@ const opt = {
 };
 
 const FRAME = 48;
-const T = { HELLO: 1, WELCOME: 2, STATE: 3, CHAT: 4, JOIN: 5, LEAVE: 6, ERROR: 7, PING: 8, GREET: 9, TALK: 10, TRADE: 12, EVENT: 13 };
+const T = { HELLO: 1, WELCOME: 2, STATE: 3, CHAT: 4, JOIN: 5, LEAVE: 6, ERROR: 7, PING: 8, GREET: 9, TALK: 10, TRADE: 12, EVENT: 13, PARTY: 14 };
+
+function sendParty(to) {
+  const data = args.party ? fs.readFileSync(args.party) : Buffer.alloc(0);
+  const count = Math.min(6, Math.floor(data.length / 0xdc));
+  if (count === 0) { const p = frame(T.PARTY); p[4] = 2; p[5] = to; sock.write(p); return; }
+  for (let i = 0; i < count; i++) {
+    const mon = Buffer.concat([data.subarray(i * 0xdc, i * 0xdc + 0xdc), Buffer.alloc(20)]);
+    for (let c = 0; c < 6; c++) {
+      const p = frame(T.PARTY); p[4] = 2; p[5] = to; p[6] = i * 6 + c; p[7] = count;
+      mon.subarray(c * 40, c * 40 + 40).copy(p, 8);
+      sock.write(p);
+    }
+  }
+  console.log(`sent party (${count}) to #${to}`);
+}
 const frame = (type) => { const b = Buffer.alloc(FRAME); b[0] = type; b.writeUInt16LE(1, 2); return b; };
 const cstr = (b, o, n) => { const s = b.subarray(o, o + n); const z = s.indexOf(0); return s.subarray(0, z < 0 ? n : z).toString('latin1'); };
 const names = {};
@@ -94,6 +110,7 @@ sock.on('data', (d) => {
       case T.GREET: console.log(`greet #${id}: ${cstr(f, 4, 40)}`); break;
       case T.TALK: console.log(`talk #${id} -> #${f[4]}`); break;
       case T.TRADE: console.log(`trade #${id} op=${f[4]} to=#${f[5]}`); if (f[5] === myId || f[4] === 4) onTrade(f, id); break;
+      case T.PARTY: if (f[4] === 1 && f[5] === myId) sendParty(id); break;
       case T.EVENT: console.log(`event #${id} kind=${f[4]} value=${f[5]} species=${f.readUInt16LE(6)} from=${f.readUInt16LE(8)}`); break;
       case T.ERROR: console.log(`error ${f[4]}`); break;
     }

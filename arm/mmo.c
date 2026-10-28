@@ -141,10 +141,79 @@ static void tick(GameSystem *gsys) {
     }
 }
 
+static void copyBytes(u8 *dst, const u8 *src, u32 n) {
+    for (u32 i = 0; i < n; i++) dst[i] = src[i];
+}
+
+typedef struct {
+    GameSystem *gsys;
+    u32 cash;
+} FriendBattleWork;
+
+// A battle against a friend's team: the game's trainer battle (Nate or Rosa, single, no blackout)
+// with their Pokemon and name swapped in, then our party and cash put back as they were.
+static u32 friendBattleEvent(GameEvent *event, u32 *state, void *data) {
+    MmoShared *sh = MMO_SHARED;
+    FriendBattleWork *w = data;
+    GameSystem *gsys = w->gsys;
+    GameData *gd = *(GameData **)((u8 *)gsys + GSYS_GAMEDATA_OFF);
+    u8 *party = GameData_GetParty(gd);
+    u32 *info = getTrainerCardDataBlkAddress(gd);
+
+    switch (*state) {
+    case 0: {
+        Field *field = GSYS_GetField(gsys);
+        copyBytes(MMO_PARTY_BACKUP, party, MMO_PARTY_BYTES);
+        w->cash = info[0];
+        GameEvent *battle = EventTrainerBattleCall_Create(gsys, field, 0, 0, sh->battleTrainer, 0, 1);
+        void *setup = *(void **)((u8 *)GameEvent_GetData(battle) + 8);
+        u8 *foe = BtlSetup_GetParty(setup, 1);
+        u32 count = sh->battleCount > 6 ? 6 : sh->battleCount;
+        ((u32 *)foe)[1] = count;
+        copyBytes(foe + 8, MMO_BATTLE_PARTY, count * 0xDC);
+        for (u32 i = count * 0xDC; i < 6 * 0xDC; i++) foe[8 + i] = 0; // the trainer's own leftovers
+        PokeParty_RecoverAll(foe);
+        // The trainers' names: BtlSetup holds party[4] then 4 PlayerInfo*, 4 bytes, trainers[4], names[4]
+        void **parties = 0;
+        for (u32 off = 0; off < 0x40; off += 4) {
+            if (*(void **)((u8 *)setup + off) == foe) { parties = (void **)((u8 *)setup + off - 4); break; }
+        }
+        if (parties != 0) {
+            void **trainers = (void **)((u8 *)parties + 0x24);
+            void **names = (void **)((u8 *)parties + 0x34);
+            if (trainers[1] != 0 && ((void **)trainers[1])[5] != 0) GFL_StrBufLoadString(((void **)trainers[1])[5], MMO_BATTLE_NAME);
+            if (names[1] != 0) GFL_StrBufLoadString(names[1], MMO_BATTLE_NAME);
+        }
+        sh->battleState = 1;
+        GameEvent_ChainNext(event, battle);
+        (*state)++;
+        return 0;
+    }
+    case 1:
+        copyBytes(MMO_AFTER_PARTY, party, MMO_PARTY_BYTES);
+        copyBytes(party, MMO_PARTY_BACKUP, MMO_PARTY_BYTES);
+        info[0] = w->cash;
+        GameEvent_ChainNext(event, CallFieldMapEntranceInTransition(gsys, GSYS_GetField(gsys), 0, 0, 1, 0, 0));
+        (*state)++;
+        return 0;
+    default:
+        sh->battleState = 2;
+        return 1;
+    }
+}
+
 GameEvent *mmo_provider(GameSystem *gsys, void *data) {
     MmoShared *sh = MMO_SHARED;
     GameEventProvider orig = (GameEventProvider)sh->origProvider;
 
-    if (sh->magic == MMO_MAGIC) tick(gsys);
+    if (sh->magic == MMO_MAGIC) {
+        tick(gsys);
+        if (sh->battleReq && sh->ready && sh->battleCount > 0) {
+            sh->battleReq = 0;
+            GameEvent *ev = GameEvent_Create(gsys, 0, friendBattleEvent, sizeof(FriendBattleWork));
+            ((FriendBattleWork *)GameEvent_GetData(ev))->gsys = gsys;
+            return ev;
+        }
+    }
     return orig != 0 ? orig(gsys, data) : 0;
 }

@@ -88,7 +88,8 @@ end
 ----------------------------------------------------------------------------------------------
 local FRAME, PROTO = 48, 1
 local T = { HELLO = 1, WELCOME = 2, STATE = 3, CHAT = 4, JOIN = 5, LEAVE = 6, ERROR = 7, PING = 8, GREET = 9,
-  TALK = 10, TRADE = 12, EVENT = 13 }
+  TALK = 10, TRADE = 12, EVENT = 13, PARTY = 14 }
+local PARTY = { REQUEST = 1, DATA = 2 }
 local TRADE = { OFFER = 1, ACCEPT = 2, CANCEL = 3, COMMIT = 4 }
 
 luanet.load_assembly("System")
@@ -212,6 +213,46 @@ end
 
 local function sendGreet() send(frame(T.GREET, pad(cfg.greeting, 40))) end
 
+
+-- Our team for a friend who wants to battle it: eggs left out, 6 chunks of 40 bytes a Pokemon
+local function sendParty(to)
+  local mons = {}
+  for _, raw in ipairs(partyRaw()) do
+    local m = PKM.decode(raw)
+    if m and not m.isEgg then mons[#mons + 1] = raw end
+  end
+  if #mons == 0 then send(frame(T.PARTY, string.pack("<BBBB", PARTY.DATA, to, 0, 0))) return end
+  for i, raw in ipairs(mons) do
+    raw = raw .. string.rep(" ", 240 - #raw)
+    for c = 0, 5 do
+      send(frame(T.PARTY, string.pack("<BBBB", PARTY.DATA, to, (i - 1) * 6 + c, #mons) .. raw:sub(c * 40 + 1, c * 40 + 40)))
+    end
+  end
+end
+
+local function requestParty(id) send(frame(T.PARTY, string.pack("<BB", PARTY.REQUEST, id))) end
+
+local function onParty(f, id, fr)
+  local op, target = fr:byte(5), fr:byte(6)
+  if target ~= net.myId then return end
+  if op == PARTY.REQUEST then sendParty(id) return end
+  if op ~= PARTY.DATA then return end
+  local piece, count = fr:byte(7), fr:byte(8)
+  if count == 0 then f.party = {} return end
+  if piece == 0 then f.partyChunks = {} end
+  f.partyChunks = f.partyChunks or {}
+  f.partyChunks[piece] = fr:sub(9, 48)
+  if piece == count * 6 - 1 then
+    local mons = {}
+    for i = 0, count - 1 do
+      local parts = {}
+      for c = 0, 5 do parts[#parts + 1] = f.partyChunks[i * 6 + c] or string.rep(" ", 40) end
+      mons[#mons + 1] = table.concat(parts):sub(1, 0xDC)
+    end
+    f.party, f.partyChunks = mons, {}
+  end
+end
+
 local function onTrade(f, id, fr)
   local op, target = fr:byte(5), fr:byte(6)
   if target ~= net.myId then return end
@@ -250,6 +291,7 @@ local function onFrame(fr)
     f.name = cstr(fr, 4, 16)
     addNotice(f.name .. " joined!")
     sendGreet()
+    requestParty(id)
   elseif type == T.LEAVE then
     local f = friends[id]
     if f then
@@ -280,6 +322,8 @@ local function onFrame(fr)
     if fr:byte(5) == net.myId then addNotice(friend(id).name .. " is talking to you!") end
   elseif type == T.TRADE then
     onTrade(friend(id), id, fr)
+  elseif type == T.PARTY then
+    onParty(friend(id), id, fr)
   elseif type == T.EVENT then
     local f = friend(id)
     local kind, value, species, from = fr:byte(5), fr:byte(6), string.unpack("<H", fr, 7), string.unpack("<H", fr, 9)
@@ -469,6 +513,7 @@ local function checkTalk()
   for id, f in pairs(friends) do
     if f.drawX and math.floor(f.drawX / 16) == tx and math.floor(f.drawZ / 16) == tz and math.abs(f.drawY - me.y) < 16 then
       send(frame(T.TALK, string.pack("<B", id)))
+      requestParty(id)
       local g = f.greet ~= "" and f.greet or "..."
       addNotice(f.name .. ": " .. g)
       return
@@ -515,6 +560,50 @@ local function finishTrade()
   local partnerName = friends[trade.partner] and friends[trade.partner].name or "your friend"
   addNotice("Traded " .. monLabel(trade.myRaw) .. " to " .. partnerName .. " for " .. monLabel(trade.theirRaw) .. "!")
   trade.partner, trade.theirRaw, trade.myRaw, trade.mySlot, trade.accepted, trade.commitHash = nil, nil, nil, nil, false, nil
+end
+
+----------------------------------------------------------------------------------------------
+-- Battling a friend's team (their party from PARTY frames; the game's AI plays it)
+----------------------------------------------------------------------------------------------
+local battle = { with = nil }
+
+local function startBattle(id)
+  local f = friends[id]
+  if not f then addNotice("Pick a friend first.") return end
+  if not me.ready then addNotice("Get back to walking around first.") return end
+  if not f.party then
+    requestParty(id)
+    addNotice("Getting " .. f.name .. "'s team... press Battle again in a moment.")
+    return
+  end
+  if #f.party == 0 then addNotice(f.name .. " has no Pokemon to battle with.") return end
+  for i, raw in ipairs(f.party) do
+    for k = 0, 0xDB do memory.writebyte(0x01FFB000 + (i - 1) * 0xDC + k - ITCM, raw:byte(k + 1), IT) end
+  end
+  local name = f.name:sub(1, 12)
+  for i = 1, #name do iw16(0x01FFAF00 + (i - 1) * 2, name:byte(i)) end
+  iw16(0x01FFAF00 + #name * 2, 0xFFFF)
+  iw32(SH + 0x70, f.model == OBJ_HEROINE and 363 or 360)
+  iw32(SH + 0x74, #f.party)
+  iw32(SH + 0x6C, 0)
+  iw32(SH + 0x68, 1)
+  battle.with = f.name
+end
+
+local function checkBattle()
+  if ir32(SH + 0x6C) ~= 2 then return end
+  iw32(SH + 0x6C, 0)
+  local count = memory.read_u32_le(0x01FFBC04 - ITCM, IT)
+  local alive = false
+  for i = 0, math.min(count, 6) - 1 do
+    local t = memory.read_bytes_as_array(0x01FFBC08 + i * 0xDC - ITCM, 0xDC, IT)
+    local raw = {}
+    for k = 1, 0xDC do raw[k] = string.char(t[k]) end
+    local m = PKM.decode(table.concat(raw))
+    if m and not m.isEgg and m.hp > 0 then alive = true end
+  end
+  addNotice((alive and "You beat " or "You lost to ") .. (battle.with or "your friend") .. "'s team! (Your party is back as it was.)")
+  battle.with = nil
 end
 
 ----------------------------------------------------------------------------------------------
@@ -637,7 +726,7 @@ local function acceptTrade()
 end
 
 local function buildForm()
-  form.id = forms.newform(380, 470, "Black 2 MMO " .. VERSION, function() form.id = nil end)
+  form.id = forms.newform(380, 510, "Black 2 MMO " .. VERSION, function() form.id = nil end)
   forms.label(form.id, "Chat (/who lists who's online)", 8, 8, 360, 18)
   form.log = forms.textbox(form.id, "", 350, 200, nil, 8, 28, true, false, "Vertical")
   form.input = forms.textbox(form.id, "", 270, 22, nil, 8, 234)
@@ -651,10 +740,11 @@ local function buildForm()
     forms.setdropdownitems(form.friend, friendNames())
     forms.setdropdownitems(form.mon, partyNames())
   end, 280, 290, 78, 54)
+  forms.button(form.id, "Battle their team", function() startBattle(selectedId(form.friend)) end, 8, 390, 350, 28)
   forms.button(form.id, "Offer", function() offerTrade() end, 8, 354, 110, 28)
   forms.button(form.id, "Accept", acceptTrade, 124, 354, 110, 28)
   forms.button(form.id, "Call off", function() cancelTrade(false) end, 240, 354, 118, 28)
-  form.tradeLabel = forms.label(form.id, "", 8, 390, 360, 40)
+  form.tradeLabel = forms.label(form.id, "", 8, 424, 360, 40)
 end
 
 local function updateTradeLabel()
@@ -690,6 +780,7 @@ while true do
     checkTalk()
     finishTrade()
   end
+  checkBattle()
   updateFriends()
   gui.clearGraphics()
   drawLabels()
@@ -697,6 +788,6 @@ while true do
   drawList()
   updateTradeLabel()
   if B2MMO_TEST then B2MMO_TEST({ me = me, friends = friends, net = net, trade = trade, form = form,
-    offerTrade = offerTrade, acceptTrade = acceptTrade, partyRaw = partyRaw, monLabel = monLabel }) end
+    offerTrade = offerTrade, acceptTrade = acceptTrade, startBattle = startBattle, partyRaw = partyRaw, monLabel = monLabel }) end
   emu.frameadvance()
 end
