@@ -45,3 +45,9 @@ typedef struct {
 // field_event.c: fade the field out, run the proc (loading its overlay), reopen the field, fade in
 #define EventFieldSubprocessTransition_Create \
     THUMB(0x020195C0, GameEvent *(*)(GameSystem *, Field *, s32, const void *, void *))
+// save/pokedex.h: seen, and seen + caught (with its language), as fld_trade.c registers a trade
+#define PokeDex_RegistPkm THUMB(0x0200D72C, void (*)(PokeDexSave *, void *))
+#define addPkmToDex THUMB(0x0200D568, void (*)(PokeDexSave *, void *))
+#define PokeParty_GetParam THUMB(0x0201CCF8, u32 (*)(void *, u32, void *))
+#define PKM_PARAM_SPECIES 0x05
+#define PKM_PARAM_IS_EGG 0x4C
