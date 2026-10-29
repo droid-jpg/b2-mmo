@@ -13,7 +13,7 @@ local CODE = dofile(DIR .. "mmo_code.lua")
 local ZONES = dofile(DIR .. "zones.lua")
 local SPECIES = dofile(DIR .. "species.lua")
 local PKM = dofile(DIR .. "pkm.lua")
-local VERSION = "0.1.0"
+local VERSION = "0.1.1"
 
 ----------------------------------------------------------------------------------------------
 -- Settings
@@ -106,7 +106,7 @@ luanet.load_assembly("System")
 local TcpClient = luanet.import_type("System.Net.Sockets.TcpClient")
 
 local net = { client = nil, stream = nil, task = nil, connected = false, myId = 0, inbuf = "", retryAt = 0,
-  lastSend = 0, status = "connecting" }
+  lastSend = 0, status = "connecting", outq = {} }
 
 local function frame(type, payload)
   local f = string.pack("<BBH", type, 0, PROTO) .. (payload or "")
@@ -126,6 +126,16 @@ local function send(f)
   if not ok then net.connected = false; net.status = "disconnected" end
 end
 
+-- Bulk frames (a party is 36) wait in a queue and go out one every other frame (30 a second): the server
+-- drops whatever a player sends past 60 frames a second, and a party missing pieces is broken.
+local function queue(f, to) net.outq[#net.outq + 1] = { f = f, to = to } end
+local function unqueue(to)
+  for i = #net.outq, 1, -1 do if net.outq[i].to == to then table.remove(net.outq, i) end end
+end
+local function pumpOut()
+  if #net.outq > 0 and emu.framecount() % 2 == 0 then send(table.remove(net.outq, 1).f) end
+end
+
 local function now() return math.floor(emu.framecount() * 1000 / 60) end
 
 local function startConnect()
@@ -133,7 +143,7 @@ local function startConnect()
   net.client = TcpClient()
   net.client.NoDelay = true
   net.task = net.client:ConnectAsync(cfg.server, cfg.port)
-  net.connected, net.inbuf, net.status = false, "", "connecting to " .. cfg.server
+  net.connected, net.inbuf, net.status, net.outq = false, "", "connecting to " .. cfg.server, {}
 end
 
 ----------------------------------------------------------------------------------------------
@@ -198,7 +208,7 @@ local function sendState()
   local moving = (me.x ~= me.lastX or me.z ~= me.lastZ)
   me.seq = me.seq + 1
   local p = string.pack("<HHfffIIffBBHI", me.zone, me.dir, me.x, me.y, me.z, me.matrix, me.seq, 0, 0,
-    moving and 0x10 or 0, status, me.objCode or 0, now())
+    moving and 0x10 or 0, status, me.model or 0, now())
   send(frame(T.STATE, p))
   me.lastX, me.lastZ = me.x, me.z
 end
@@ -228,6 +238,7 @@ local function sendGreet() send(frame(T.GREET, pad(cfg.greeting, 40))) end
 
 -- Our team for a friend who wants to battle it: eggs left out, 6 chunks of 40 bytes a Pokemon
 local function sendParty(to)
+  unqueue(to) -- a newer request replaces one still going out
   local mons = {}
   for _, raw in ipairs(partyRaw()) do
     local m = PKM.decode(raw)
@@ -237,12 +248,16 @@ local function sendParty(to)
   for i, raw in ipairs(mons) do
     raw = raw .. string.rep(" ", 240 - #raw)
     for c = 0, 5 do
-      send(frame(T.PARTY, string.pack("<BBBB", PARTY.DATA, to, (i - 1) * 6 + c, #mons) .. raw:sub(c * 40 + 1, c * 40 + 40)))
+      queue(frame(T.PARTY, string.pack("<BBBB", PARTY.DATA, to, (i - 1) * 6 + c, #mons) .. raw:sub(c * 40 + 1, c * 40 + 40)), to)
     end
   end
 end
 
-local function requestParty(id) send(frame(T.PARTY, string.pack("<BB", PARTY.REQUEST, id))) end
+local function requestParty(id)
+  local f = friends[id]
+  if f then f.partyAskedAt = now() end
+  send(frame(T.PARTY, string.pack("<BB", PARTY.REQUEST, id)))
+end
 
 local function onParty(f, id, fr)
   local op, target = fr:byte(5), fr:byte(6)
@@ -251,15 +266,23 @@ local function onParty(f, id, fr)
   if op ~= PARTY.DATA then return end
   local piece, count = fr:byte(7), fr:byte(8)
   if count == 0 then f.party = {} return end
-  if piece == 0 then f.partyChunks = {} end
-  f.partyChunks = f.partyChunks or {}
+  if count > 6 or piece >= count * 6 then return end
+  if piece == 0 or not f.partyChunks or f.partyCount ~= count then f.partyChunks, f.partyCount = {}, count end
   f.partyChunks[piece] = fr:sub(9, 48)
   if piece == count * 6 - 1 then
+    -- Only a whole team of Pokemon that decode (checksum right) replaces the one we have: a broken
+    -- Pokemon in a battle crashes the game
     local mons = {}
     for i = 0, count - 1 do
       local parts = {}
-      for c = 0, 5 do parts[#parts + 1] = f.partyChunks[i * 6 + c] or string.rep(" ", 40) end
-      mons[#mons + 1] = table.concat(parts):sub(1, 0xDC)
+      for c = 0, 5 do
+        local part = f.partyChunks[i * 6 + c]
+        if not part then f.partyChunks = {} return end
+        parts[#parts + 1] = part
+      end
+      local raw = table.concat(parts):sub(1, 0xDC)
+      if not PKM.decode(raw) then f.partyChunks = {} return end
+      mons[#mons + 1] = raw
     end
     f.party, f.partyChunks = mons, {}
   end
@@ -277,9 +300,15 @@ local function onTrade(f, id, fr)
     if chunk == chunks - 1 then
       local parts = {}
       for i = 0, chunks - 1 do parts[#parts + 1] = trade.theirChunks[i] or string.rep("\0", 40) end
-      trade.theirRaw = table.concat(parts):sub(1, 0xDC)
+      local raw = table.concat(parts):sub(1, 0xDC)
       trade.theirChunks, trade.accepted = {}, false
-      addNotice(f.name .. " offers " .. monLabel(trade.theirRaw) .. ". Pick yours in the trade window.")
+      if PKM.decode(raw) then
+        trade.theirRaw = raw
+        addNotice(f.name .. " offers " .. monLabel(raw) .. ". Pick yours in the trade window.")
+      else
+        trade.theirRaw = nil
+        addNotice(f.name .. "'s offer arrived broken. Ask them to offer again.")
+      end
     end
   elseif op == TRADE.CANCEL then
     if trade.partner == id then
@@ -319,7 +348,10 @@ local function onFrame(fr)
       -- (a door or a map edge: not used yet beyond the notice)
     end
     if zone ~= f.zone and f.zone ~= -1 and zone == me.zone then addNotice(f.name .. " arrived.") end
-    f.zone, f.matrix, f.dir, f.anim, f.status, f.model, f.lastSeen = zone, matrix, dir, anim, status, model, now()
+    -- Only Nate's and Rosa's own models: the player's object code is something else on a bike, surfing,
+    -- fishing or in a cutscene pose, and a friend's actor made with one of those can crash the game
+    if model == OBJ_HERO or model == OBJ_HEROINE then f.model = model end
+    f.zone, f.matrix, f.dir, f.anim, f.status, f.lastSeen = zone, matrix, dir, anim, status, now()
     local local_ = now()
     local off = local_ - t
     if not f.offset or off < f.offset or local_ - (f.offsetAt or 0) > 5000 then f.offset, f.offsetAt = off, local_ end
@@ -470,6 +502,7 @@ local function readMe()
     me.x, me.y, me.z = is32(SH + 0x20) / 4096, is32(SH + 0x24) / 4096, is32(SH + 0x28) / 4096
     me.dir, me.zone, me.objCode = ir32(SH + 0x2C), zone, ir32(SH + 0x34)
     me.exState, me.matrix = ir32(SH + 0x3C), ir32(SH + 0x40)
+    me.model = ir32(SH + 0x38) == 1 and OBJ_HEROINE or OBJ_HERO -- by sex: see the STATE handler
   end
   if not wasReady and me.ready == false and me.staleFrames > 120 then me.noWarpUntil = now() + 5000 end
 end
@@ -530,7 +563,8 @@ local function checkTalk()
   for id, f in pairs(friends) do
     if f.drawX and math.floor(f.drawX / 16) == tx and math.floor(f.drawZ / 16) == tz and math.abs(f.drawY - me.y) < 16 then
       send(frame(T.TALK, string.pack("<B", id)))
-      requestParty(id)
+      -- Their team (for Battle), at most every 10 s: mashing A would flood the server
+      if now() - (f.partyAskedAt or -10000) >= 10000 then requestParty(id) end
       -- A feature can take the conversation over (the game's own text box)
       for _, ft in ipairs(features) do
         if ft.onTalk and ft.onTalk(f, id) then return end
@@ -848,6 +882,7 @@ while true do
     checkActivity()
     checkTalk()
     finishTrade()
+    pumpOut()
   end
   checkBattle()
   updateFriends()

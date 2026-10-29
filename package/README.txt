@@ -15,7 +15,7 @@ Over the internet, Tailscale (https://tailscale.com) on everyone's PC is the eas
 or forward TCP port 7777 on the host's router.
 
 In game:
-  - Friends on your map show up as trainers (Nate or Rosa, on their bike too) with their
+  - Friends on your map show up as trainers (Nate or Rosa) with their
     name above them. They walk, run and turn as they do in their game.
   - Walk up to a friend and press A: you see their greeting, and they see you're talking.
   - Hold Tab for the list of who's online and where.
@@ -24,4 +24,6 @@ In game:
     money are put back afterwards, win or lose).
   - Friends get a notice when you catch a Pokemon, one evolves or you earn a badge.
 
-Back up your save before playing. Settings live in lua\b2mmo.ini.
+Back up your save before playing. Settings live in lua\b2mmo.ini. To change anything,
+including where BizHawk or your ROM is, run "Install Black 2 MMO.bat" again: it
+remembers your answers, so just press Enter on the ones you keep.

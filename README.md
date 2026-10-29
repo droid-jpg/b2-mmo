@@ -14,8 +14,7 @@ and speaks the same network protocol.
 
 ## What you can do
 
-- **See each other.** Friends on your map show up as their own trainer (Nate or Rosa, on their bike
-  too), walking, running and turning as they do in their game, with their name above their head.
+- **See each other.** Friends on your map show up as their own trainer (Nate or Rosa), walking, running and turning as they do in their game, with their name above their head.
   They block your way like any trainer.
 - **Talk to each other.** Walk up to a friend and press **A**: you see their greeting, and they
   see that you're talking to them.
@@ -43,6 +42,9 @@ and speaks the same network protocol.
    where BizHawk is and where your ROM is.
 3. Double-click **Play Black 2 MMO.bat**. BizHawk starts the game with the mod and opens the
    Black 2 MMO window next to it.
+
+To change anything later (a wrong ROM or BizHawk path, your name, the server), run
+**Install Black 2 MMO.bat** again: it remembers your answers, so press Enter on the ones you keep.
 
 ## Hosting a game
 
