@@ -1,6 +1,5 @@
 -- Surfing friends: two at once (the shared surf Pokemon objects), one leaving while surfing (no
--- leftover), odd object codes (fallback, no crash). (Map changes: t_ride3.lua. Walking into a
--- building with any friend actor on the map hangs the game in the core as of 99bf41f, ride or not.)
+-- leftover), odd object codes (fallback, no crash). Map changes: t_ride3.lua (battle), t_door.lua (door).
 -- B2PORT=7787 bash test/up.sh "--name Ann --x 584 --z 232 --path square --size 2 --speed 1 --model 231 --plugin ride --ride surf --ride-leave 25" \
 --   "--name Bob --x 520 --z 216 --path line --size 3 --speed 1 --model 240 --plugin ride --ride surf" \
 --   "--name Cid --x 616 --z 232 --path stand --model 9999" "--name Dee --x 504 --z 184 --path stand --model 234"

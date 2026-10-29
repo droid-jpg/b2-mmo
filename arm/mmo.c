@@ -48,6 +48,16 @@ static void dropSlot(MmoSlot *slot, int i) {
     slot->actor = 0;
 }
 
+// Whether entry e's actor is still the one we made: in use, in this actor system, and its move
+// work (FieldActor+0x94, FldCommActLink) still linked to the entry. A map change through a door
+// frees the actor system with its actors (FieldCommActor_MoveDelete isn't called, so actorDeleted
+// stays 0) and makes a new one, often at the same address, where that memory is something else.
+static int isOurActor(FldCommActEntry *e, MMSys *mm) {
+    u8 *a = (u8 *)e->actor;
+    return (*(u32 *)a & 1) != 0 && *(MMSys **)(a + FLDACT_SYSTEM_OFF) == mm &&
+           *(FldCommActEntry **)(a + FLDACT_MOVEWORK_OFF + 0x0C) == e;
+}
+
 static void tick(GameSystem *gsys) {
     MmoShared *sh = MMO_SHARED;
     Field *field = GSYS_GetField(gsys);
@@ -110,6 +120,11 @@ static void tick(GameSystem *gsys) {
         MmoSlot *slot = &sh->slots[i];
         FldCommActEntry *e = &sEntries[i];
 
+        if (e->actor != 0 && !e->actorDeleted && !isOurActor(e, mm)) {
+            // A new map (a door) freed the actor with its actor system without telling us, and the
+            // new system may sit at the same address: forget it, never DeleteActor a stale pointer
+            e->actorDeleted = 1;
+        }
         if (slot->spawned && (e->actor == 0 || e->actorDeleted)) {
             dropSlot(slot, i); // the game deleted it (it does on some map changes)
         }
