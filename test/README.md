@@ -29,3 +29,11 @@ run only the tests whose name contains one of them: `bash test/all.sh talk chat`
 A test passes when its log has its verdict (`PASS` or `ALL PASS`; `friends=1` with `features: 7` for
 smoke; `done, 0 failures` for evolve) and no `FAIL` or `test error:` line. Tests without a verdict
 (ride, ride2, ride3, watch, watch-send) always count as FAIL until they print one.
+
+## Live battles with two games (`test/live2.sh`)
+
+`B2PORT=7782 bash test/up.sh` (server only), then `bash test/live2.sh 900`: two BizHawk games
+(`test/out` Michael, `test/out/b` Hilda, both from `field2.State`) play one live battle to the end
+(`t_live_a.lua`, `t_live_b.lua`, `t_live_two.lua`) and the script compares the HP/checksum both
+logged at every step ("SAME in both games: N steps"). It unbinds the mouse from the touch screen in
+both test configs (the tests touch the screen from Lua).

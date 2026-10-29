@@ -17,6 +17,8 @@ for g in a b; do
   name=out; [ $g = b ] && name=out/b
   mkdir -p "$out"
   [ -f "$out/config.ini" ] || cp "$BIZHAWK/config.ini" "$out/config.ini"
+  # The touch screen follows the host mouse unless unbound: the tests touch it from Lua
+  sed -i -E 's/"Value": "WMouse [XY]"/"Value": ""/' "$out/config.ini"
   cat > "$out/env.lua" <<LUA
 return { root = "$wroot/", out = "$wroot/test/$name/", states = "$STATES/", port = $port }
 LUA

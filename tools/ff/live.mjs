@@ -25,9 +25,13 @@ function firstMove(raw) {
 
 export default function live(ctx) {
   const { frame, send, T, args, fs, myId, names } = ctx;
-  const party = args.party ? fs.readFileSync(args.party) : Buffer.alloc(0);
-  const count = Math.min(6, Math.floor(party.length / 0xdc));
-  const mons = [...Array(count).keys()].map((i) => party.subarray(i * 0xdc, i * 0xdc + 0xdc));
+  // The party file is read when a battle is set up (a test may write it after we start)
+  let count = 0, mons = [];
+  function load() {
+    const party = args.party && fs.existsSync(args.party) ? fs.readFileSync(args.party) : Buffer.alloc(0);
+    count = Math.min(6, Math.floor(party.length / 0xdc));
+    mons = [...Array(count).keys()].map((i) => party.subarray(i * 0xdc, i * 0xdc + 0xdc));
+  }
   let foe = null;       // who we battle
   let order = [];       // our battle party order (the battle swaps the one sent in to the front)
   let fainted = new Set();
@@ -36,6 +40,7 @@ export default function live(ctx) {
 
   const liveFrame = (op, to) => { const f = frame(T.LIVE); f[4] = op; f[5] = to; return f; };
   function sendParty(to) {
+    load();
     for (let i = 0; i < count; i++) {
       const mon = Buffer.concat([mons[i], Buffer.alloc(20)]);
       for (let c = 0; c < 6; c++) {
