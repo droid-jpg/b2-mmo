@@ -69,9 +69,60 @@ positions at their real speed (interpolated, 150 ms behind) and the game animate
 
 ## Talking
 
-Pressing A in front of a comm actor does nothing in the game (no script runs; it was checked that it
-doesn't hang, unlike ORAS where an NPC without a script hung the script runner). Lua sees A pressed
-while the field is live and a friend is on the tile in front, and does the rest as notices.
+Pressing A in front of a comm actor starts no script in the game (it was checked that it doesn't
+hang, unlike ORAS where an NPC without a script hung the script runner). Lua sees A pressed while
+the field is live and a friend is on the tile in front, and runs the conversation itself.
+
+The conversation is the game's own text box and choice list (`arm/talk.c`): an event that shows a
+message (Black 2's text codes: UTF-16, 0xFFFE a new line, a page break as 0xF000 0xBE01 0x0000
+0xFFFE), then, if there are choices, the game's list menu beside it, and writes the player's answer
+where Lua reads it. The event stays up until Lua says what's next, so one conversation reads like a
+script. Lua keeps a queue of messages (`api.gameMessage`, `lua/features/talk.lua`); the talk menu
+(Battle, Trade, Live battle, ...) is a list of `api.actions` that features add to.
+
+## Chat keyboard
+
+**Select** on the field opens a quick list (the talk box). **Type a message...** opens the game's
+name entry, the screen nicknames use, in its trainer-message mode with up to 10 letters and no
+profanity filter (`arm/chat.c`, `setupNameEntry`). Lua holds the field still with an idle event while
+the list is up; the event lets go if Lua stops refreshing it (a counter in the chat block), so a
+crashed script can't leave the player stuck.
+
+## Trade evolutions
+
+After a trade writes the Pokémon into the party, `arm/evolve.c` asks the game's own check
+(`CheckEvolveSpecies`, trade method: trade, trade holding an item, Karrablast/Shelmet, Everstone).
+If it evolves, Lua shows "X sent over Y!" and the game's evolution demo (`ShinkaDemoParam`, run as
+`fld_trade.c` runs it) plays on that slot. The traded-in Pokémon is put in the Pokédex the way the
+in-game trade does it. The core would report both the catch and the evolution as notices, so it
+drops those species from its queue for a moment (`quiet()`).
+
+## Friends' bikes and surf
+
+A friend's actor already wears their own player object code, so biking needs nothing more. Surfing
+gets the game's surf Pokémon under the actor (field effect 3, `fldeff_namipoke.c`). It runs in its
+own task (`arm/ride.c`) because the game keeps one set of 3D objects for the surf Pokémon and its
+wake: with two surfers, the game's task would draw both where the last update put them. Ours places
+them just before drawing and puts them back where the player's own surf task wants them. A task
+whose actor is no longer the friend's is skipped, and a stale one (the field was rebuilt by a battle
+or a door) is forgotten, never deleted.
+
+## Watching a battle
+
+Our side is read from the battle's own memory by Lua every frame (`lua/features/watch.lua`, the
+structures are in the header comment): the running `GameProc` of the battle, its `BtlMainModule`,
+and each side's `BattleParty`. Nothing runs in the game for it, since the field's event provider is
+not running during a battle. A friend's battle is only shown while their busy bit and BATTLE frames
+keep coming.
+
+## Doors
+
+Every map change seen (ours, and every friend's on any map) is a warp, in both directions: the zone
+the mover last stood in, at the spot it left from, leads to the new zone, and the new zone's arrival
+spot leads back. The game's own warp list of each zone we're in is learned too. A map change
+flagged "no warp" (STATE bit 3: Fly, Teleport, Dig, a whiteout, a cutscene) teaches nothing. Warps
+are kept in `lua/b2mmo-warps.txt`, so the labels work from the start next time. Overworld matrices
+(0 and 175) share coordinates between their zones, so a route's edge is not a door.
 
 ## Testing
 

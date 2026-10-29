@@ -15,19 +15,35 @@ and speaks the same network protocol.
 ## What you can do
 
 - **See each other.** Friends on your map show up as their own trainer (Nate or Rosa, on their bike
-  too), walking, running and turning as they do in their game, with their name above their head.
-  They block your way like any trainer.
-- **Talk to each other.** Walk up to a friend and press **A**: you see their greeting, and they
-  see that you're talking to them.
-- **Battle a friend's team.** In the Black 2 MMO window, pick a friend and **Battle their team**:
-  a real trainer battle against their party, under their name ("You are challenged by PKMN Trainer
-  Ann!"), played by the game's AI. Win or lose, your party, EXP and money are put back afterwards.
-- **Trade.** In the window, both of you offer a Pokémon and press **Accept**; the server swaps them
-  in both games at once.
-- **Chat.** Type in the window. `/who` lists who's online and where.
+  or surfing too), walking, running and turning as they do in their game, with their name above
+  their head. They block your way like any trainer.
+- **Talk to each other.** Walk up to a friend, face them and press **A**. Their greeting appears in
+  the game's own text box, with a choice list: **Battle**, **Trade**, **Live battle** (and
+  **Cancel**). Pick with the D-pad and **A**, back out with **B**. They see that you're talking to them.
+- **Battle a friend's team.** Talk to them and pick **Battle**, or use **Battle their team** in the
+  window: a real trainer battle against their party, under their name ("You are challenged by PKMN
+  Trainer Ann!"), played by the game's AI. Win or lose, your party, EXP and money are put back afterwards.
+- **Live battles.** Talk to a friend and pick **Live battle**. Their game asks "X challenges you to
+  a live battle! Battle X now?": **Yes** starts it. Then you each pick your own moves on your own
+  game, and the same battle plays out on both. Singles only. If your friend leaves, the game's AI
+  plays their side to the end.
+- **Watch a battle.** When a friend is in a battle (against a wild Pokémon, a trainer or a friend),
+  talk to them: a line says what each side has out, and the bottom screen shows both teams with HP
+  bars until their battle ends. Press **B** to stop watching. Your own battles are sent to your
+  friends automatically.
+- **Trade.** In the window, or **Trade** in the talk menu: pick the Pokémon you offer, and the other
+  side picks **Yes** (or uses **Accept** in the window). The server swaps them in both games at once.
+  A Pokémon that evolves by trade evolves when it arrives: "X sent over Y!", then the evolution.
+- **Doors.** On a building's door you see "Ann is inside" when a friend is in that building, or
+  deeper in the place behind it (up to four doors). Off screen, the label sits at the edge with an
+  arrow. Automatic: you don't need to do anything, and the mod remembers the doors you've walked through.
+- **Chat.** In the Black 2 MMO window, type and press **Send**. In the game, press **Select** on the
+  field for a quick list: "Hi!", "Follow me!", "Wait for me!", "Battle?", "Trade?", "/who", or
+  **Type a message...** to use the game's keyboard (up to 10 letters, the D-pad and **A**). `/who`
+  lists who's online and where.
 - **Follow each other.** Hold **Tab** for the list of players and the town or route each one is
-  on. You get a notice when a friend joins, arrives on your map, catches a Pokémon, evolves one or
-  earns a badge.
+  on (and who is in a battle). You get a notice when a friend joins, arrives on your map, catches a
+  Pokémon, evolves one or earns a badge.
 
 ## What you need
 
@@ -59,8 +75,10 @@ Everyone who types the same room code ends up in the same world.
 
 - It's early. Expect rough edges, and back up your save before playing.
 - Pokémon Black 2 (USA) only for now (not White 2 or other languages yet).
-- Trades are the mod's own, not the game's link trade: no trade evolutions yet.
-- Battles have the game's AI play your friend's team; there are no live player-vs-player battles yet.
+- Trades are the mod's own, not the game's link trade.
+- Live battles are singles only and haven't been played over the internet yet. Bag items aren't
+  restored after a live battle, and terrain isn't equalised.
+- Chat is up to 10 letters per message; typing on the touch screen is untested.
 
 Found a bug? [Open an issue](https://github.com/droid-jpg/b2-mmo/issues).
 
@@ -70,10 +88,11 @@ Found a bug? [Open an issue](https://github.com/droid-jpg/b2-mmo/issues).
 
 | Folder | What's in it |
 |---|---|
-| `arm/` | The code that runs inside the game (C, ARMv5TE Thumb): reports the player, shows friends as the game's own other-player actors, swaps parties for trades and battles |
-| `lua/` | The BizHawk script: injects `arm/`, networking, names over heads, notices, the window (chat, trading, battles) |
+| `arm/` | The code that runs inside the game (C, ARMv5TE Thumb): reports the player, shows friends as the game's own other-player actors, swaps parties for trades and battles, and one file per feature (talk box, chat keyboard, live battles, watching, trade evolutions, friends' bikes and surf) |
+| `lua/` | The BizHawk script: injects `arm/`, networking, names over heads, notices, the window. `lua/features/*.lua` holds one file per feature (talk, live, watch, evolve, chat, doors, ride), each with its header comment |
 | `server/` | The relay server, Node with no dependencies: `node server/server.mjs [port]` |
-| `tools/` | `fakefriend.mjs`, a test player that joins a room and walks, chats, trades and lends its team |
+| `tools/` | `fakefriend.mjs`, a test player that joins a room and walks, chats, trades and lends its team, with plugins in `tools/ff/` ([`tools/ff/README.md`](tools/ff/README.md)); `pkedit.mjs`, a party editor (`show`, `edit`, `pick`, `selftest`) for Gen 5 party dumps |
+| `test/` | BizHawk tests with fake friends: [`test/README.md`](test/README.md) |
 | `package/` | The Windows installer and launchers that go in the zip |
 | `scripts/` | Build, packaging and the generators for the zone and species tables |
 | `docs/` | [`NOTES.md`](docs/NOTES.md): how it was reverse-engineered and how it works |
