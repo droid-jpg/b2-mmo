@@ -1,15 +1,15 @@
 -- Doors: "Ann is inside" on the door that leads to a friend, warps learned from map changes.
 -- The mode comes from the DOORS environment variable (each needs its own fake friend):
 --   self    we walk into the house at x 632 (zone 64 -> 585) and back out: both ways learned,
---           not flagged "no warp", saved to the file          (bash test/up.sh "--name Bot --zone 62 --path stand": no friend on our map
---           while we walk through a door, see the report on the actor bug)
+--           not flagged "no warp", saved to the file          (bash test/up.sh "--name Bot --matrix 107 --path stand --x 520 --z 200": a friend
+--           on our map while we walk through the door)
 --   reload  (after self) the saved warps are there from the start
 --   friend  Ann walks into the house: learned, a fading "Ann → inside" note, then "Ann is inside"
---           on the door                                       (up.sh "--name Ann --plugin doors --path stand --x 600 --z 200 --stay -1")
+--           on the door                                       (up.sh "--name Ann --plugin doors --matrix 107 --path stand --x 600 --z 200 --stay -1")
 --   nowarp  the same hop flagged as Fly: nothing learned, no label (add --nowarp)
 --   town    Ann leaves by the west edge to the main Nimbasa City (zone 62) and goes into the Musical
 --           Theater: "← Ann is in Musical Theater" at the screen edge (the west edge is off screen)
---           (up.sh "--name Ann --plugin doors --path stand --x 200 --z 200 --stay -1 --route 168,200>62,0,6968,16,7384;6936,6952>77,380,232,0,400")
+--           (up.sh "--name Ann --plugin doors --matrix 107 --path stand --x 200 --z 200 --stay -1 --route 168,200>62,0,6968,16,7384;6936,6952>77,380,232,0,400")
 -- DOORS=friend bash test/run.sh test/t_doors.lua 200
 local K = dofile((debug.getinfo(1, "S").source:match("^@(.*[/\\])") or "") .. "lib.lua")
 local mode = os.getenv("DOORS") or "friend"
@@ -25,6 +25,7 @@ local function has(d, from, to, x, z)
   end
 end
 local function dumpWarps(d)
+  K.log("  map changes seen: " .. table.concat(d.seen, ", "))
   for _, w in ipairs(d.warps) do K.log(string.format("  warp %d -> %d at %.0f,%.0f,%.0f", w.from, w.to, w.x, w.y, w.z)) end
 end
 local pass = true
@@ -87,7 +88,7 @@ K.start({ doorsGameWarps = "0", warpsFile = file }, function(s, f)
     end
   end
   local lb = d.labels[1]
-  if lb and not labelAt then labelAt = f; K.log(string.format("label: %s at %.0f,%.0f screen %.0f,%.0f%s", lb.text, lb.x, lb.z, lb.sx, lb.sy, lb.onScreen and "" or " (off screen)")) end
+  if lb and not labelAt and (mode ~= "town" or lb.text:find("Theater")) then labelAt = f; K.log(string.format("label: %s at %.0f,%.0f screen %.0f,%.0f%s", lb.text, lb.x, lb.z, lb.sx, lb.sy, lb.onScreen and "" or " (off screen)")) end
   if mode == "friend" and labelAt and f == labelAt + 60 then
     K.shot("label")
     check(has(d, 64, 585) ~= nil and has(d, 585, 64, 232, 728) ~= nil, "Ann's walk taught 64 -> 585 and 585 -> 64")

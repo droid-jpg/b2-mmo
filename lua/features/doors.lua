@@ -54,8 +54,12 @@ return function(api)
   end
 
   -- A map change seen: zone a at (ax, ay, az) -> zone b arriving at (bx, by, bz)
+  -- (M.seen: the map changes seen, for tests: "a>b warp", "a>b edge", "a>b nowarp")
+  M.seen = {}
+  local function seen(s) M.seen[#M.seen + 1] = s; if #M.seen > 50 then table.remove(M.seen, 1) end end
   local function learnBoth(a, am, ax, ay, az, b, bm, bx, by, bz)
-    if am == bm and SHARED[am] then return end -- across a route boundary: not a door
+    if am == bm and SHARED[am] then seen(a .. ">" .. b .. " edge") return end -- across a route boundary: not a door
+    seen(a .. ">" .. b .. " warp")
     learn(a, b, ax, ay, az)
     learn(b, a, bx, by, bz)
   end
@@ -169,6 +173,8 @@ return function(api)
       if l and l.zone ~= zone then
         if l.status & 8 == 0 and status & 8 == 0 then
           learnBoth(l.zone, l.matrix, l.x, l.y, l.z, zone, matrix, x, y, z)
+        else
+          seen(l.zone .. ">" .. zone .. " nowarp")
         end
         -- Left our map: a note where they stood
         if me.ready and onMyMap(l.zone, l.matrix) and not onMyMap(zone, matrix) then
