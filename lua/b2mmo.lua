@@ -753,7 +753,10 @@ end
 local function drawList()
   local keys = input.get()
   if not keys["Tab"] then
-    gui.drawText(2, 372, "B2 MMO " .. net.status .. "  (Tab: players)", 0xC0FFFFFF, 0x80000000, 8)
+    -- opaque and the same size as the Tab list: smaller or see-through text blurs once the screen is scaled up
+    gui.drawBox(0, 370, 255, 383, 0xFF202830, 0xFF202830)
+    gui.drawText(4, 371, "B2 MMO " .. net.status, 0xFFFFFFFF, 0x00000000, 10)
+    gui.drawText(251, 371, "Tab: players", 0xFFA0A0A0, 0x00000000, 10, nil, nil, "right")
     return
   end
   local lines = { string.format("%s (you): %s", cfg.name, zoneName(me.zone)) }
