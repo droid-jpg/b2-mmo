@@ -13,7 +13,7 @@ local CODE = dofile(DIR .. "mmo_code.lua")
 local ZONES = dofile(DIR .. "zones.lua")
 local SPECIES = dofile(DIR .. "species.lua")
 local PKM = dofile(DIR .. "pkm.lua")
-local VERSION = "0.1.1"
+local VERSION = "0.2.0"
 
 ----------------------------------------------------------------------------------------------
 -- Settings
