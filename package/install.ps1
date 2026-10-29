@@ -1,6 +1,7 @@
 # Black 2 MMO setup (Windows). Run through "Install Black 2 MMO.bat".
 # Asks for your name, the server and a room code (saved in lua\b2mmo.ini), where BizHawk is and
 # where your Pokemon Black 2 ROM is, then writes "Play Black 2 MMO.bat" next to this file.
+# Run it again to change any answer (the previous ones are the defaults).
 $ErrorActionPreference = 'Stop'
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Utf8 = New-Object System.Text.UTF8Encoding($false)
@@ -34,29 +35,38 @@ $port = Ask 'Server port' (Old 'port' '7777')
 $room = (Clean (Ask 'Room code (everyone with the same code plays together)' (Old 'room' 'UNOVA')) 11).ToUpper()
 $greeting = Clean (Ask 'What you say when someone talks to you' (Old 'greeting' 'Hi! Want to battle or trade?')) 39
 
+# --- BizHawk and the ROM ----------------------------------------------------------------------
+# Asked every time (the saved path is the default) so running setup again can fix a wrong one.
+function AskFile([string]$about, [string]$prompt, [string]$default, [scriptblock]$fix, [scriptblock]$ok) {
+    if (-not ($default -and (& $ok $default))) { $default = '' }
+    while ($true) {
+        Write-Host ''
+        Write-Host $about
+        $v = Ask $prompt $default
+        if ($v) { $v = & $fix $v }
+        if ($v -and (& $ok $v)) { return (Resolve-Path -LiteralPath $v).ProviderPath }
+        if ($v) { Write-Host "Not found or not the right file: $v" }
+    }
+}
+$emu = AskFile 'Where is BizHawk? (2.9 or newer, from https://github.com/TASEmulators/BizHawk/releases)' `
+    'Path to EmuHawk.exe or its folder' (Old 'emuhawk' '') `
+    { param($p) if (Test-Path -LiteralPath $p -PathType Container) { Join-Path $p 'EmuHawk.exe' } else { $p } } `
+    { param($p) (Test-Path -LiteralPath $p -PathType Leaf) -and ([IO.Path]::GetExtension($p) -eq '.exe') }
+$rom = AskFile 'Where is your Pokemon Black 2 (USA) ROM? (.nds, your own dump)' `
+    'Path to the .nds file' (Old 'rom' '') `
+    { param($p) $p } `
+    { param($p) (Test-Path -LiteralPath $p -PathType Leaf) -and ([IO.Path]::GetExtension($p) -eq '.nds') }
+
 $lines = @(
     "# Black 2 MMO settings. Edit and restart the script (BizHawk: Tools > Lua Console) to apply.",
     "name=$name", "server=$server", "port=$port", "room=$room", "greeting=$greeting",
-    "# labels=0 hides names above friends' heads", "labels=$(Old 'labels' '1')"
+    "# labels=0 hides names above friends' heads", "labels=$(Old 'labels' '1')",
+    "# To change BizHawk or the ROM, run 'Install Black 2 MMO.bat' again.",
+    "emuhawk=$emu", "rom=$rom"
 )
 [IO.File]::WriteAllLines($Ini, $lines, $Utf8)
+Write-Host ''
 Write-Host "Saved $Ini"
-
-# --- BizHawk and the ROM ----------------------------------------------------------------------
-$emu = Old 'emuhawk' ''
-while (-not ($emu -and (Test-Path $emu))) {
-    Write-Host ''
-    Write-Host 'Where is BizHawk? (2.9 or newer, from https://github.com/TASEmulators/BizHawk/releases)'
-    $emu = Ask 'Path to EmuHawk.exe or its folder' ''
-    if ($emu -and (Test-Path $emu -PathType Container)) { $emu = Join-Path $emu 'EmuHawk.exe' }
-}
-$rom = Old 'rom' ''
-while (-not ($rom -and (Test-Path $rom))) {
-    Write-Host ''
-    Write-Host 'Where is your Pokemon Black 2 (USA) ROM? (.nds, your own dump)'
-    $rom = Ask 'Path to the .nds file' ''
-}
-Add-Content -Path $Ini -Value @("emuhawk=$emu", "rom=$rom") -Encoding UTF8
 
 $lua = Join-Path $Here 'lua\b2mmo.lua'
 $play = Join-Path $Here 'Play Black 2 MMO.bat'

@@ -24,4 +24,6 @@ In game:
     money are put back afterwards, win or lose).
   - Friends get a notice when you catch a Pokemon, one evolves or you earn a badge.
 
-Back up your save before playing. Settings live in lua\b2mmo.ini.
+Back up your save before playing. Settings live in lua\b2mmo.ini. To change anything,
+including where BizHawk or your ROM is, run "Install Black 2 MMO.bat" again: it
+remembers your answers, so just press Enter on the ones you keep.
