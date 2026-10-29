@@ -7,14 +7,14 @@ local K = dofile((debug.getinfo(1, "S").source:match("^@(.*[/\\])") or "") .. "l
 local IT = "Instruction TCM"
 local function it32(a) return memory.read_u32_le(a - 0x01FF8000, IT) end
 local RIDE = 0x01FFF900
-local started, endedAt, field0 = nil, nil, nil
+local started, endedAt, field0, created0 = nil, nil, nil, nil
 local function info()
   return string.format("task0=%08X created=%d deleted=%d effects=%08X field=%08X", it32(RIDE + 0x20), it32(RIDE + 0x60),
     it32(RIDE + 0x64), it32(RIDE + 0x68), it32(0x01FFA014))
 end
 K.start({ speed = 400 }, function(s, f)
   if f % 120 == 0 then K.log(string.format("f=%d ready=%s battleState=%d %s", f, tostring(s.me.ready), it32(0x01FFA06C), info())) end
-  if f == 240 then K.shot("1_before"); K.log("before: " .. info()) end
+  if f == 240 then K.shot("1_before"); K.log("before: " .. info()); created0 = it32(RIDE + 0x60) end
   if f == 260 and not started then
     for id, fr in pairs(s.friends) do started = id; s.startBattle(id) end
   end
@@ -23,6 +23,14 @@ K.start({ speed = 400 }, function(s, f)
     if it32(0x01FFA06C) == 2 or (f > 400 and s.me.ready and it32(0x01FFA06C) == 0) then endedAt = f; K.log("f=" .. f .. " battle over: " .. info()) end
   end
   if endedAt and f == endedAt + 200 then K.shot("2_after"); K.log("after: " .. info()) end
-  if endedAt and f == endedAt + 230 then K.shot("3_after"); client.exit() end
-  if f > 12000 then K.log("timeout " .. info()); K.shot("timeout"); client.exit() end
+  if endedAt and f == endedAt + 230 then
+    K.shot("3_after")
+    K.check(created0 and created0 >= 1, "surf Pokemon before the battle")
+    K.check(it32(RIDE + 0x60) > (created0 or 0) and it32(RIDE + 0x20) ~= 0, "a new surf Pokemon after the field rebuild")
+    K.check(it32(RIDE + 0x64) == 0, "the stale task was forgotten, not deleted")
+    K.check(s.me.ready, "back on the field")
+    K.verdict()
+    client.exit()
+  end
+  if f > 12000 then K.log("timeout " .. info()); K.shot("timeout"); K.check(false, "battle ended"); K.verdict(); client.exit() end
 end)

@@ -16,11 +16,17 @@ local function rideInfo()
   return table.concat(t, " ") .. string.format(" created=%d deleted=%d", it32(RIDE + 0x60), it32(RIDE + 0x64))
 end
 
+local seen = { bike = false, surf = false, surfOff = false }
 K.start({ speed = 200 }, function(s, f)
   local fr
   for _, x in pairs(s.friends) do fr = x end
   if fr and fr.slot then
     local a = 0x01FFA080 + fr.slot * 0x30
+    local spawned, shown = it32(a + 0x1C) == 1, it32(a + 0x24)
+    local task = it32(RIDE + 0x20 + fr.slot * 4)
+    if spawned and (fr.model == 232 or fr.model == 241) and shown == fr.model then seen.bike = true end
+    if spawned and fr.status & 4 ~= 0 and it32(RIDE + fr.slot * 4) == 1 and task ~= 0 then seen.surf = true end
+    if seen.surf and spawned and fr.status & 4 == 0 and task == 0 and f - changedAt > 30 then seen.surfOff = true end
     if fr.model ~= lastModel then
       K.log(string.format("f=%d friend model %s -> %d status=%d", f, tostring(lastModel), fr.model, fr.status))
       lastModel, changedAt, shots = fr.model, f, 0
@@ -44,5 +50,12 @@ K.start({ speed = 200 }, function(s, f)
     K.log("me after Y: obj=" .. tostring(s.me.objCode) .. " ex=" .. tostring(s.me.exState) .. " ready=" .. tostring(s.me.ready))
     K.shot("me_bike2")
   end
-  if f == 2620 then client.exit() end
+  if f == 2620 then
+    K.check(seen.bike, "friend on a bike shown with the cycling object code")
+    K.check(seen.surf, "surfing friend got a surf Pokemon task")
+    K.check(seen.surfOff, "surf Pokemon removed when the friend walks again")
+    K.check(s.me.objCode == 232 or s.me.objCode == 241, "our own bike: object code " .. tostring(s.me.objCode))
+    K.verdict()
+    client.exit()
+  end
 end)

@@ -17,3 +17,15 @@ bash test/down.sh
   states (`STATES`, default `E:/b2-mmo/scratch/states`). None of these are in the repo.
 - Tests never save in-game. BizHawk's SaveRAM for the ROM holds a completed save (8 badges).
 - Build the in-game code first if `arm/` changed: `wsl -e bash -lc 'cd /mnt/e/<checkout> && bash scripts/build.sh'`.
+
+## Running all tests (`test/all.sh`)
+
+`bash test/all.sh` runs every test and doors mode one after another, each with the fake friends
+its header asks for (`up.sh`, then `run.sh`, then `down.sh`), and prints a table of PASS/FAIL and
+seconds. Logs go to `test/out/all/<name>.log`, screenshots to `test/out/all/<name>/`. Pass words to
+run only the tests whose name contains one of them: `bash test/all.sh talk chat`. The relay port is
+`B2PORT` (default 7777). The exit code is 0 only if everything passed.
+
+A test passes when its log has its verdict (`PASS` or `ALL PASS`; `friends=1` with `features: 7` for
+smoke; `done, 0 failures` for evolve) and no `FAIL` or `test error:` line. Tests without a verdict
+(ride, ride2, ride3, watch, watch-send) always count as FAIL until they print one.

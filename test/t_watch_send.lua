@@ -56,6 +56,15 @@ K.start({}, function(s, f)
     if (doneAt and f > doneAt + 120) or f > 9000 then
       K.log("over: frames sent " .. watch.W.frames .. ", sent=" .. tostring(watch.W.sent) .. ", ready=" .. tostring(s.me.ready))
       K.shot("send_after")
+      local fh = io.open(K.env.out .. "ff1.out", "r")
+      local ff = fh and fh:read("a") or ""
+      if fh then fh:close() end
+      local _, got = ff:gsub("[Bb]attle", "")
+      K.check(inBattleSeen, "our battle read from its memory")
+      K.check(overSeen and s.me.ready, "battle over, back on the field")
+      K.check(watch.W.frames > 0, "BATTLE frames sent: " .. watch.W.frames)
+      K.check(got > 0, "the friend received them: " .. got .. " lines")
+      K.verdict()
       client.exit()
     end
   end

@@ -37,4 +37,14 @@ function K.start(cfg, fn, state)
   K.log("client stopped: " .. tostring(err))
   client.exit()
 end
+-- Verdicts: K.check(ok, what) logs "OK what" or "FAIL what"; K.verdict() logs PASS (all OK) or FAIL
+local fails, checks = 0, 0
+function K.check(ok, what)
+  checks = checks + 1
+  if not ok then fails = fails + 1 end
+  K.log((ok and "OK   " or "FAIL ") .. what)
+end
+function K.verdict()
+  K.log((fails == 0 and checks > 0) and "PASS" or ("FAIL (" .. fails .. " of " .. checks .. " checks)"))
+end
 return K

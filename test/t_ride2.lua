@@ -26,12 +26,29 @@ end
 
 K.start({ speed = 200 }, function(s, f)
   if f % 60 == 0 then K.log(string.format("f=%d zone=%d x=%.0f z=%.0f ready=%s %s", f, s.me.zone, s.me.x, s.me.z, tostring(s.me.ready), info(s))) end
-  if f == 300 then K.shot("a_two_surfing") end
+  if f == 300 then
+    K.shot("a_two_surfing")
+    local surfing, odd = 0, 0
+    for _, fr in pairs(s.friends) do
+      if fr.slot then
+        if it32(RIDE + 0x20 + fr.slot * 4) ~= 0 then surfing = surfing + 1 end
+        if (fr.name == "Cid" or fr.name == "Dee") and it32(0x01FFA080 + fr.slot * 0x30 + 0x1C) == 1 then odd = odd + 1 end
+      end
+    end
+    K.check(surfing == 2, "two friends surfing at once, each with a task: " .. surfing)
+    K.check(odd == 2, "odd object codes shown (fallback), no crash: " .. odd)
+  end
   if f == 330 then K.shot("a_two_surfing2") end
   local ann = false
   for _, fr in pairs(s.friends) do if fr.name == "Ann" then ann = true end end
   if f > 300 and not ann and not annGoneAt then annGoneAt = f; K.log("f=" .. f .. " Ann left: " .. info(s)) end
   if annGoneAt and f == annGoneAt + 40 then K.shot("b_ann_left"); K.log("after leave: " .. info(s)) end
-  if annGoneAt and f == annGoneAt + 70 then K.shot("b_ann_left2"); client.exit() end
-  if f > 6000 then K.log("timeout"); client.exit() end
+  if annGoneAt and f == annGoneAt + 70 then
+    K.shot("b_ann_left2")
+    K.check(it32(RIDE + 0x64) >= 1, "Ann's surf Pokemon deleted when she left: deleted=" .. it32(RIDE + 0x64))
+    K.check(s.me.ready, "field still running")
+    K.verdict()
+    client.exit()
+  end
+  if f > 6000 then K.check(false, "Ann left (timeout)"); K.verdict(); client.exit() end
 end)
