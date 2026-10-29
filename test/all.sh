@@ -122,6 +122,13 @@ one watch 120 pass - test/t_watch.lua "--name Ann --x 568 --z 184 --path stand -
 one watch-send 400 pass - test/t_watch_send.lua \
   "--name Ann --x 584 --z 184 --path stand --party $wroot/scratch/slot2.bin --plugin watch --watch listen"
 
+# Live battles: a fake friend plays the other side (tools/ff/live.mjs); the test writes test/out/party.bin
+live() { one live-$1 300 pass LIVE=$1 test/t_live.lua "--name Ann --x 584 --z 184 --path stand --party $wout/party.bin --plugin live $2"; }
+live normal "--live-accept"
+live decline ""
+live leave "--live-accept --live-leave 2"
+live guest "--live-challenge 2"
+
 # Summary
 if [ ${#RESULTS[@]} -eq 0 ]; then
   echo "no test matches: ${WORDS[*]}"

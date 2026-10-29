@@ -82,9 +82,32 @@ while the field is live and a friend is on the tile in front, and does the rest 
 (`client.setscreenshotosd(true)` to include the overlay) and `dofile`s `lua/b2mmo.lua`, all under
 `EmuHawk.exe --lua=<test>.lua <rom>`.
 
+## Live battles
+
+Both games run the core's friend battle (a trainer battle against the other's party) with themselves
+as client 0 (the UI) and the friend as client 1 (the game's AI); `arm/live.c` keeps them in step.
+Everything is in pokebw2's `src/ov167` (battle) and checked at run time:
+
+| What | Where | Why |
+|---|---|---|
+| `BtlAdapter` | ov167 `btl_adapter.c` | per client: +4 reply*, +8 reply bytes, +0xC low nibble replied (high nibble link), +0xD client, +0xE state (1 to send, 3 waiting, 4 replied), +0xF command, +0x14 command data. One-console battles share one adapter between server and client |
+| `BattleServer_AllClientsReplied` | ov167 `0x0219F19C` | the server polls it every frame until every client replied. **Replaced**: our client's answers to commands 3 (action), 5/6 (send-in) are queued for the friend; client 1 only counts as replied once the friend's answer for the same step is in, which replaces the AI's (reply pointer/size). Server: clients[4] @0x14, 0xC each (adapter, BattleParty*, ..., clientId @+0xB) |
+| `BtlAdapter_SetCmd` | ov167 `0x021D4AEC` | **Replaced** (same code) to save the battle RNG when a command goes out; it's put back once all replied, so the AI thinking or anything client-side can't move it in one game only |
+| `buildSeed` | main `0x02044098` | `BtlMain_ProcInit` (ov167, `LR 0x02199A6B`) seeds the battle RNG from entropy with it. A jump at its start (written from the field in `live_battle_setup`, removed on its first call) gives the battle the shared seed and, since ov167 and ov169 are loaded by then, patches the battle code |
+| `BattleRandom` / `data_ov167_021dd844` | ov167 `0x021BD0C0`, RNG at `0x021DD84C` | MATHRandContext32 (x, mul 0x5D588B656C078965, add 0x269EC3) |
+| `ActionOrder_Sort` | ov167 `0x021A0308` | **Replaced**: entries (16 bytes, client @0xC) host's first, then the game's sort (ties: `BattleRandom(2)` in list order) |
+| `SortBySpeed` | ov169 `0x0689D0AC` (runs from VRAM) | **Replaced** the same way; BtlMonSet count @0x42, speed[] @0x36; `BtlServerFlow_CalcSpeed` ov167 `0x021ABD08`. VRAM takes halfword writes only |
+| `func_ov167_0219bdfc` | ov167 `0x0219BDFC` | "does the player's side gain EXP?": patched to return FALSE (only caller: `ServerControl_CheckExpGain`) |
+| BtlSetup | `+0x10` weather, `+0x74` Config* | weather cleared (each field has its own); Config bit 6 = battle style, set to Set while the battle runs (Shift asks only the player) |
+| Code patches | `DC_FlushRange 0x0207B0AC`, `IC_InvalidateRange 0x0207B0E8` | each patched function starts with `bx pc; nop; ldr pc, [pc, #-4]; .word fn` (no register used); the patches go away with the overlays |
+
+Action words (`BattleAction`): action bits 0..3, a move's target position bits 4..6 (the UI sends 6, "the
+game picks", in singles; the AI an explicit position), move bits 7..22; a switch: position bits
+4..6, battle party slot bits 7..9 (the UI's send-in of slot 1 is `0x83`). Positions alternate between
+the clients, so the friend's targets get bit 0 flipped. The whole party goes over (eggs too, in order),
+since switches name battle party slots. `test/live2.sh` runs two BizHawk games against each other.
+
 ## Not found yet
 
 - The field camera's matrix (labels use a fitted projection: about 1.06 px a unit across and 1.02
   down at the player's depth, growing toward the camera).
-- Battle sync for live battles: Black 2's battle runs in overlay 167 (`BtlSetup` → `data_ov167_021d6ce0`);
-  the client/server split is there (`BtlServer`, `BtlClient`, `BtlAdapter`), as in ORAS.

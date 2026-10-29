@@ -29,7 +29,7 @@ TCP, little-endian, **fixed 48-byte frames**. Every frame starts with:
 | 12 | TRADE | both | One step of a trade, for player `target` u8 @5 only: `op` u8 @4 (1 OFFER, 2 ACCEPT, 3 CANCEL, 4 COMMIT). OFFER: `chunk` u8 @6 of `chunks` u8 @7 (7), 40 bytes of the offered Pokémon @8 (0x104 bytes in all: encrypted 0xE8 data + 0x1C party stats, as the game stores them). ACCEPT: u32 @8 = FNV-1a over both offers (lower player id's first). COMMIT comes only from the server: once both players have sent ACCEPT for each other with the same hash, it sends COMMIT (`player` = the partner, same hash) to both at once; an OFFER or CANCEL from either side, or either leaving, clears pending accepts. A game swaps only on COMMIT (and ignores COMMIT from clients, which the server never relays). |
 | 13 | EVENT | both | Something happened in the sender's game, shown to friends as a notice: `kind` u8 @4 (1 CAUGHT: `species` u16 @6 was caught; 2 EVOLVED: `from` u16 @8 evolved into `species`; 3 BADGE: `value` u8 @5 = badge number 1..8, in the order the gyms are beaten). |
 | 14 | PARTY | both | The sender's party, for player `target` u8 @5 only: `op` u8 @4 (1 REQUEST: send me yours; 2 DATA). DATA: `piece` u8 @6 = slot × 7 + chunk, `count` u8 @7 (Pokémon in the party, eggs left out; 0 = none), 40 bytes @8 (each Pokémon is 0x104 bytes as the game stores it, like a trade offer). Asked for when a friend joins and whenever you talk to them; used to battle their team. `op` 3 LIVE: like DATA, but the whole party as the game has it (eggs too, in order), sent unasked right before a live battle CHALLENGE or ACCEPT. |
-| 15 | LIVE | both | A live battle with player `target` u8 @5 only: `op` u8 @4. 1 CHALLENGE: `seed` u32 @8, the battle RNG seed both games use (the challenger is the host); 2 ACCEPT; 3 CANCEL (declined, called off, or left: the other side's AI takes over); 4 ACTION: one answer to the battle, `step` u16 @6 (counts from 0 per battle), `cmd` u8 @8 (the battle's command: 3 pick an action, 5/6 pick a Pokémon to send in), `count` u8 @9, `check` u32 @12 (FNV-1a over species/HP of both teams, the host's first, when the step was asked; 0 = unknown), `count` (≤ 6) u32 action words @16 as the sender's battle wrote them (low nibble 1 move: target bits 4..7, move id bits 8..23; 2 item; 3 switch: position bits 4..6, party slot bits 7..9). Each game answers every step for its own side. |
+| 15 | LIVE | both | A live battle with player `target` u8 @5 only: `op` u8 @4. 1 CHALLENGE: `seed` u32 @8, the battle RNG seed both games use (the challenger is the host); 2 ACCEPT; 3 CANCEL (declined, called off, or left: the other side's AI takes over); 4 ACTION: one answer to the battle, `step` u16 @6 (counts from 0 per battle), `cmd` u8 @8 (the battle's command: 3 pick an action, 5/6 pick a Pokémon to send in), `count` u8 @9 (0xFF: no words, the receiver's AI picks for the sender), `ask` u8 @10 (bit 0: the sender's side had to choose this step, bit 1: the receiver's; informative), `check` u32 @12 (FNV-1a over species/HP of both teams, the host's first, when the step was asked; 0 = unknown), `count` (≤ 6) u32 action words @16 as the sender's battle wrote them (low nibble 1 move: target bits 4..7, move id bits 8..23; 2 item; 3 switch: position bits 4..6, party slot bits 7..9). Each game answers every step for its own side. |
 
 ## Flow
 
@@ -61,4 +61,12 @@ Positions are map-local; clients only draw players whose `map` matches their own
   entries are the ones out. HP is what the battle screen shows. Status conditions are not sent (no room
   in the frame). Receivers keep a friend's battle while their STATE busy bit is set and BATTLE frames
   keep coming (6 s).
-- Not used yet in Black 2: LIVE (live battles).
+- **PARTY op 3 LIVE** / **LIVE**: as above, with Black 2's 6 chunks a Pokémon (`piece` = slot × 6 +
+  chunk). ACTION words are Black 2's `BattleAction` (pokebw2 `battle/btl_action.h`): low nibble the
+  action (1 move, 2 item, 3 switch), a move's target position bits 4..6 (6 = the game picks, as the
+  UI sends in singles) and move id bits 7..22; a switch's position bits 4..6 and battle party slot
+  bits 7..9. At most 5 words are used (one per Pokémon out). Positions alternate between the two
+  games' sides, so the receiver flips bit 0 of a move's target below 6. The seed initialises the
+  battle's MATHRandContext32 (x = seed | (seed ^ 0x4C495645) << 32). `check`: FNV-1a over the u32
+  `species << 16 | HP` (little-endian) of each team's battle party in its current order, the host's
+  team first.
