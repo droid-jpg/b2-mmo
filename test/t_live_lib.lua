@@ -1,5 +1,5 @@
 -- Shared by the live battle tests (t_live*.lua): lib.lua's helpers for a test whose output folder
--- may be test/out2 (the second game of test/live2.sh), and the battle driver.
+-- may be test/out/b (the second game of test/live2.sh), and the battle driver.
 -- Usage: LIVE_OUT = "out2/" (optional); local K = dofile(<test dir> .. "t_live_lib.lua")
 local here = debug.getinfo(1, "S").source:match("^@(.*[/\\])") or ""
 local K = {}
@@ -37,24 +37,27 @@ function K.start(cfg, fn, state)
   client.exit()
 end
 
--- Touches the bottom screen at x, y (its own pixels, 256 x 192)
-local function touch(x, y)
-  joypad.setanalog({ ["Touch X"] = x, ["Touch Y"] = y })
-  joypad.set({ Touch = true })
-end
-
--- Plays our side: every 48 frames touch FIGHT, then a move (the first one, or Outrage once the
--- Kyurem in front has used most of its first move's PP), then A for the texts and send-ins.
--- st = the live feature's status(); host = our team comes first in st.hp.
+-- Plays our side with the buttons, every 64 frames. A Kyurem in front (its first move has only
+-- 8 PP) uses Outrage: Up (FIGHT on the main menu), A (into FIGHT), Down (Outrage), A. Any other
+-- Pokemon uses the move under the cursor (A, A). When our Pokemon in front has fainted (the
+-- send-in screen): B, touch the second one, A, A. host: our team comes first in st.hp.
 function K.drive(st, f, host)
   if st.armed ~= 1 then return end
-  local c = f % 48
-  local front = st.hp:match(host and "^(%d+):" or "^%S+ %S+ (%d+):")
-  local slot = { 63, 53 }
-  if front == "646" and st.step0 >= 5 then slot = { 63, 101 } end
-  if c < 3 then touch(128, 95)
-  elseif c >= 16 and c < 19 then touch(slot[1], slot[2])
-  elseif c >= 32 and c < 35 then joypad.set({ A = true }) end
+  local c = f % 64
+  local front, hp = st.hp:match(host and "^(%d+):(%d+)" or "^%S+ %S+ (%d+):(%d+)")
+  local press
+  if hp == "0" then
+    if c >= 16 and c < 19 then
+      joypad.setanalog({ ["Touch X"] = 190, ["Touch Y"] = 25 })
+      joypad.set({ Touch = true })
+    end
+    press = ({ [0] = "B", [40] = "A", [52] = "A" })[c]
+  elseif front == "646" then
+    press = ({ [0] = "Up", [8] = "A", [36] = "Down", [48] = "A" })[c]
+  else
+    press = ({ [8] = "A", [48] = "A" })[c]
+  end
+  if press then joypad.set({ [press] = true }) end
 end
 
 -- One line of the battle as this game sees it, when our step count changed
