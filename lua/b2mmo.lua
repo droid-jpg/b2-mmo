@@ -711,6 +711,12 @@ end
 ----------------------------------------------------------------------------------------------
 -- Drawing: names over heads, notices, the player list
 ----------------------------------------------------------------------------------------------
+-- BizHawk's default font is a thin Courier that turns to mush once the screen is scaled up: all
+-- overlay text (ours and the features') uses Tahoma bold unless a call names its own font
+local drawText = gui.drawText
+gui.drawText = function(x, y, text, fg, bg, size, family, style, ...)
+  return drawText(x, y, text, fg, bg, size, family or "Tahoma", family and style or "bold", ...)
+end
 -- The field camera looks down at the player (screen 128, ~62 for a head) at a fixed angle;
 -- this approximates it (about 1.06 px a unit across at the player's depth, more nearer the camera).
 local function project(x, y, z)
@@ -753,7 +759,7 @@ end
 local function drawList()
   local keys = input.get()
   if not keys["Tab"] then
-    -- opaque and the same size as the Tab list: smaller or see-through text blurs once the screen is scaled up
+    -- opaque and the same size as the Tab list: smaller or see-through text blurs
     gui.drawBox(0, 370, 255, 383, 0xFF202830, 0xFF202830)
     gui.drawText(4, 371, "B2 MMO " .. net.status, 0xFFFFFFFF, 0x00000000, 10)
     gui.drawText(251, 371, "Tab: players", 0xFFA0A0A0, 0x00000000, 10, nil, nil, "right")
