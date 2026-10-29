@@ -7,7 +7,7 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 out="$root/test/out"
 mkdir -p "$out"
 BIZHAWK=${BIZHAWK:-/e/Tools/BizHawk}
-ROM=${ROM:-"C:\Users\samin\Downloads\6111 - Pokemon Black 2 (US) (frieNDS).nds"}
+ROM=${ROM:-"C:\Users\samin\Downloads\Black2.nds"}
 STATES=${STATES:-E:/b2-mmo/scratch/states}
 port=$(cat "$out/port" 2>/dev/null || echo "${B2PORT:-7777}")
 [ -f "$out/config.ini" ] || cp "$BIZHAWK/config.ini" "$out/config.ini"

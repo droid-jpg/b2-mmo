@@ -29,7 +29,12 @@ return function(api)
 
   local function rd(o) return api.ir32(L + o) end
   local function wr(o, v) api.iw32(L + o, v) end
-  local function nameOf(id) return api.friends[id] and api.friends[id].name or ("#" .. tostring(id)) end
+  local known = {} -- names of friends we had a live battle going with (LEAVE comes after the core forgot them)
+  local function nameOf(id)
+    local f = api.friends[id]
+    if f then known[id] = f.name end
+    return known[id] or ("#" .. tostring(id))
+  end
   local function liveFrame(op, to, rest) return api.frame(T.LIVE, string.pack("<BB", op, to) .. (rest or "")) end
 
   local function reset() live.phase, live.with, live.inbox, live.sentArmed = nil, nil, {}, false end
@@ -240,7 +245,7 @@ return function(api)
     local text
     if rd(O.fellBack) == 1 then
       text = nameOf(live.with) .. "'s side: the game plays it"
-    elseif rd(O.waiting) == 1 and rd(O.inR) == rd(O.inW) then
+    elseif rd(O.waiting) == 1 and rd(O.inR) == rd(O.inW) and rd(O.steps01) & 0xFFFF > rd(O.steps01) >> 16 then
       text = "Waiting for " .. nameOf(live.with) .. "..."
     end
     if text then gui.drawText(128, 2, text, 0xFFFFFFFF, 0xA0000000, 9, nil, nil, "center", "top") end
