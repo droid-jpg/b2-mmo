@@ -60,6 +60,9 @@ and speaks the same network protocol.
 3. Double-click **Play Black 2 MMO.bat**. BizHawk starts the game with the mod and opens the
    Black 2 MMO window next to it.
 
+To change anything later (a wrong ROM or BizHawk path, your name, the server), run
+**Install Black 2 MMO.bat** again: it remembers your answers, so press Enter on the ones you keep.
+
 ## Hosting a game
 
 One person double-clicks **Start server.bat** (in the zip). It prints the address everyone else

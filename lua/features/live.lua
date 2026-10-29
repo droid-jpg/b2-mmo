@@ -46,7 +46,7 @@ return function(api)
     for i, raw in ipairs(mons) do
       raw = raw .. string.rep("\0", 240 - #raw)
       for c = 0, 5 do
-        api.send(api.frame(T.PARTY, string.pack("<BBBB", PARTY_LIVE, to, (i - 1) * 6 + c, #mons) .. raw:sub(c * 40 + 1, c * 40 + 40)))
+        api.queue(api.frame(T.PARTY, string.pack("<BBBB", PARTY_LIVE, to, (i - 1) * 6 + c, #mons) .. raw:sub(c * 40 + 1, c * 40 + 40)))
       end
     end
     return true
@@ -69,14 +69,14 @@ return function(api)
     live.phase, live.with, live.host = "challenging", id, true
     live.seed = math.random(1, 0x7FFFFFFF) ~ (emu.framecount() * 0x9E37) & 0xFFFFFFFF
     live.deadline = api.now() + TIMEOUT
-    api.send(liveFrame(OP.CHALLENGE, id, string.pack("<xxI4", live.seed)))
+    api.queue(liveFrame(OP.CHALLENGE, id, string.pack("<xxI4", live.seed))) -- after the party (queued)
     api.addNotice("You challenged " .. f.name .. " to a live battle. Waiting for an answer...")
   end
 
   function M.accept()
     if live.phase ~= "asked" then api.addNotice("Nobody is challenging you right now.") return end
     if not sendParty(live.with) then cancel("Your party isn't loaded yet: live battle called off.") return end
-    api.send(liveFrame(OP.ACCEPT, live.with))
+    api.queue(liveFrame(OP.ACCEPT, live.with)) -- after the party (queued)
     live.phase, live.host, live.deadline = "starting", false, api.now() + TIMEOUT
     api.addNotice("Live battle with " .. nameOf(live.with) .. "!")
   end
