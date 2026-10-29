@@ -86,18 +86,24 @@ return function(api)
     if label then say(label) end
   end
 
+  local function holdMenu()
+    chat.phase = "menu"
+    set("keep", HOLD_FRAMES)
+    set("req", 1)
+  end
+
   local function open()
     chat.sel = 1
+    -- The game's own text box and choice list (the talk feature). onAnswer runs once the box has
+    -- closed and the player is free again, so "Type a message..." can start the keyboard from there.
     if api.gameMessage then
       chat.phase = "gameMessage"
-      api.gameMessage("Say what?", items, function(i)
+      local ok = api.gameMessage("What do you want to say?", items, function(i)
         if chat.phase == "gameMessage" then choose(i) end
       end)
-    else
-      chat.phase = "menu"
-      set("keep", HOLD_FRAMES)
-      set("req", 1)
+      if ok ~= false then return end
     end
+    holdMenu()
   end
 
   local function edge(pad, k)

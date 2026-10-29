@@ -11,3 +11,6 @@ scratch/
 *.bin
 # BizHawk test output (logs, screenshots, per-checkout config)
 test/out/
+
+# Doors learned while playing (lua/features/doors.lua)
+lua/b2mmo-warps.txt

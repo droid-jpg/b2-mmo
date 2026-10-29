@@ -1,8 +1,9 @@
 -- Trade evolutions against the fake friend:
 --   B2PORT=7784 bash test/up.sh "--name Ann --x 616 --z 120 --path stand --trade <out>/offer.bin"
---   bash test/run.sh test/t_evolve.lua 400
--- The test dumps our party, makes the friend's offers from it (tools/pkedit.mjs from the pkedit
--- worktree, or PKEDIT; tools/ff/evolve.mjs for new PIDs) and writes each into offer.bin before
+--   bash test/run.sh test/t_evolve.lua 480
+-- Trades are answered in the game's box (talk.lua asks "You give .. You get .. Trade with Ann?").
+-- The test dumps our party, makes the friend's offers from it (tools/pkedit.mjs, or PKEDIT;
+-- tools/ff/evolve.mjs for new PIDs) and writes each into offer.bin before
 -- offering our slot 2 for it:
 --   1. Haunter Lv30            -> the game's scene, Gengar in the party
 --   2. Seadra with Dragon Scale -> Kingdra, item gone
@@ -10,7 +11,7 @@
 --   4. Sigilyph                 -> nothing extra
 local K = dofile((debug.getinfo(1, "S").source:match("^@(.*[/\\])") or "") .. "lib.lua")
 local OUT, ROOT = K.env.out, K.env.root
-local PKEDIT = os.getenv("PKEDIT") or "E:/b2-wt/pkedit/tools/pkedit.mjs"
+local PKEDIT = os.getenv("PKEDIT") or (ROOT .. "tools/pkedit.mjs")
 local EV = 0x01FFF600
 local DRAGON_SCALE, EVERSTONE = 235, 229
 
@@ -41,7 +42,7 @@ local CASES = {
 }
 
 local step, at, case, friendId, base, fails = "init", 0, 0, nil, nil, 0
-local evolvedAt
+local evolvedAt, offerSeen, checkAt
 local API
 local function ev(o) return API.ir32(EV + o) end
 local function check(cond, what)
@@ -75,35 +76,44 @@ K.start({ name = "Michael" }, function(s, f)
       return
     end
     copy(OUT .. c.file .. ".bin", OUT .. "offer.bin")
-    base, evolvedAt = counters(), nil
-    K.log("case " .. case .. ": " .. c.label .. "; party " .. K.party(s))
+    base, evolvedAt, offerSeen = counters(), nil, nil
+    K.log("case " .. case .. ": " .. c.label .. "; party " .. K.party(s) .. "; caught " .. API.ir32(API.SH + 0x4C))
     s.offerTrade(friendId, 2)
     step, at = "accept", f
   elseif step == "accept" then
-    if s.trade.theirRaw then
-      K.log("they offer " .. s.monLabel(s.trade.theirRaw))
-      s.acceptTrade()
+    -- Their offer back makes talk.lua ask "You give .. You get .. Trade with Ann?" in the game's
+    -- box: answer it (A through the pages, A on Yes), which accepts the trade
+    local n = counters()
+    if s.trade.theirRaw and not offerSeen then offerSeen = f; K.log("they offer " .. s.monLabel(s.trade.theirRaw)) end
+    if offerSeen then
+      local t = f - offerSeen
+      if t == 50 and case == 1 then K.shot("c1_confirm") end
+      if t > 60 and t % 40 < 3 then K.press({ A = true }) end
+    end
+    if n.checks > base.checks then
+      checkAt = f
+      K.log("trade landed and checked: species " .. ev(0x08))
       step, at = "wait", f
-    elseif f - at > 600 then check(false, "no offer back"); step, at = "next", f end
+    elseif f - at > 1800 then check(false, "trade never landed"); step, at = "next", f end
   elseif step == "wait" then
     local c = CASES[case]
     local n = counters()
+    local t = f - at
     if c.into then
-      -- The scene: press A now and then for its text, screenshots along the way
+      -- "Ann sent over X!" in the game's box, closed with A, then the scene: A now and then for its text
+      if t == 30 then K.shot("c" .. case .. "_sentover") end
+      if t > 60 and t % 40 < 3 then K.press({ A = true }) end
       if n.started > base.started and n.finished == base.finished then
-        local t = f - at
         if t % 150 == 0 and case <= 2 then K.shot(string.format("c%d_scene_%04d", case, t)) end
         local m = slot2(s)
-        if m and m.species == c.into and not evolvedAt then evolvedAt = f; K.log("species changed at scene frame " .. t) end
+        if m and m.species == c.into and not evolvedAt then evolvedAt = f; K.log("species changed at frame " .. t) end
         if evolvedAt and (f - evolvedAt == 30 or f - evolvedAt == 100) then K.shot(string.format("c%d_evolved_%d", case, f - evolvedAt)) end
-        if t % 40 < 3 then K.press({ A = true }) end
       end
       if n.finished > base.finished and s.me.ready then
         step, at = "after", f
-      elseif f - at > 6000 then check(false, "scene never finished"); step, at = "after", f end
+      elseif t > 6000 then check(false, "scene never finished"); step, at = "after", f end
     else
-      if n.checks > base.checks and f - at > 240 then step, at = "after", f
-      elseif f - at > 1200 then check(false, "no check"); step, at = "after", f end
+      if t > 240 then step, at = "after", f end
     end
   elseif step == "after" then
     if f - at < 150 then return end

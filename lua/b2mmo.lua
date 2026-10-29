@@ -455,23 +455,59 @@ end
 ----------------------------------------------------------------------------------------------
 -- Our game: position, activity
 ----------------------------------------------------------------------------------------------
+-- The warps of the zone we're in, from the game's own event data (GameData+0x158 = EventData:
+-- zoneId u16 @0x10, warpCount u16 @0x16, warps @0x24, 20 bytes each: target zone u16 @0, grid
+-- x/y/z u16 @8/10/12 (units, the first tile's centre), width/height u16 @14/16 in tiles).
+local function readZoneWarps(zone)
+  local gd = r32(r32(G_GAMESYSTEM) + 0x1C)
+  if not inRam(gd) then return nil end
+  local ed = r32(gd + 0x158)
+  if not inRam(ed) or memory.read_u16_le(ed + 0x10, SB) ~= zone then return nil end
+  local n, w, list = memory.read_u16_le(ed + 0x16, SB), r32(ed + 0x24), {}
+  if n > 64 or (n > 0 and not inRam(w)) then return nil end
+  for i = 0, n - 1 do
+    local a = w + i * 20
+    local u = function(o) return memory.read_u16_le(a + o, SB) end
+    list[#list + 1] = { to = u(0), x = u(8), y = u(10), z = u(12), w = u(14), h = u(16) }
+  end
+  return list
+end
+
+-- Whether a spot is on or next to (1 tile) one of the zone's warps leading to `to`
+local function atWarp(warps, x, z, to)
+  for _, w in ipairs(warps or {}) do
+    if w.to == to and x >= w.x - 18 and x <= w.x + (w.w - 1) * 16 + 18 and z >= w.z - 18 and z <= w.z + (w.h - 1) * 16 + 18 then
+      return true
+    end
+  end
+  return false
+end
+
 local function readMe()
   local ticks = ir32(SH + 0x0C)
   if ticks ~= me.lastTicks then me.lastTicks, me.staleFrames = ticks, 0 else me.staleFrames = me.staleFrames + 1 end
-  local wasReady = me.ready
   -- The field asks for events at 30 fps; a few frames without means a menu, text box, battle or cutscene
   me.ready = ir32(SH + 0x10) == 1 and me.staleFrames < 6
   if ir32(SH + 0x10) == 1 then
-    local zone = ir32(SH + 0x30)
+    local zone, matrix = ir32(SH + 0x30), ir32(SH + 0x40)
     if zone ~= me.zone and me.zone ~= 0 then
-      -- Map change: a walk through a door if we were just walking, else (Fly, Dig...) no warp
-      if me.staleFrames > 90 then me.noWarpUntil = now() + 5000 end
+      -- Map change. A walk through a door or across a warping map edge leaves from one of the old
+      -- zone's warps to this zone (a door walk keeps the field busy 2-3 s, as long as a quick Fly,
+      -- so time alone can't tell them apart). Walking across a route boundary of the overworld
+      -- isn't a warp but isn't Fly either. Anything else (Fly, Teleport, Dig, Escape Rope, a
+      -- whiteout, a cutscene) is flagged "no warp" for 5 s so friends don't learn it as a door.
+      if atWarp(me.zoneWarps, me.x, me.z, zone) then
+        me.noWarpUntil = 0
+      elseif not (matrix == me.matrix and (matrix == 0 or matrix == 175)) then
+        me.noWarpUntil = now() + 5000
+      end
+      me.zoneWarps = nil
     end
     me.x, me.y, me.z = is32(SH + 0x20) / 4096, is32(SH + 0x24) / 4096, is32(SH + 0x28) / 4096
     me.dir, me.zone, me.objCode = ir32(SH + 0x2C), zone, ir32(SH + 0x34)
-    me.exState, me.matrix = ir32(SH + 0x3C), ir32(SH + 0x40)
+    me.exState, me.matrix = ir32(SH + 0x3C), matrix
+    if me.zoneWarps == nil and me.ready then me.zoneWarps = readZoneWarps(zone) end
   end
-  if not wasReady and me.ready == false and me.staleFrames > 120 then me.noWarpUntil = now() + 5000 end
 end
 
 local function badgeCount(b)

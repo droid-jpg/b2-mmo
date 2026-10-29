@@ -24,6 +24,7 @@ as the other player, on a completed save (8 badges, Nimbasa City).
 | Battling a friend's team | ✅ window → Battle their team: the game's trainer battle (`EventTrainerBattleCall_Create`, single, no-blackout flag) against trainer 360 (Nate) or 363 (Rosa) with the friend's party swapped in (healed) and their name ("You are challenged by PKMN Trainer Ann!"). Afterwards our party and cash are put back and the field fades back in. Tested to the end of a battle |
 | Activity notices | ✅ catches (Pokédex caught flags, scanned every 2 s by the ARM code), evolutions (same PID, new species in the party), badges. Received side tested with `fakefriend --events`; our own catch/evolution/badge not yet triggered in a real game |
 | Watching a friend's battle | ✅ while you battle (wild, trainer, a friend's team) your game sends BATTLE frames, read by Lua from the battle's own memory (`lua/features/watch.lua`; tested in a trainer battle: HP and a faint followed). A on a friend in a battle: a notice with what each side has out, and the bottom screen lists both teams with live HP bars until their battle ends, you walk away or press B. The Tab list says "(in a battle)". Received side tested with `fakefriend --plugin watch` |
+| "Ann is inside" on doors | ✅ every map change seen (yours, and every friend's on any map) teaches a warp both ways, plus the game's own warp list of each zone you're in (`lua/features/doors.lua`). A friend on another map gets a steady label on the door or map edge of your map that leads toward them, up to 4 doors deep: "Ann is inside" (a building of this place, or the one right through that door) or "Cal, Dee are in Musical Theater"; off screen, at the screen edge with an arrow. A friend leaving your map leaves a fading "Ann → Pokémon Center" note. Fly, Teleport, Dig, Escape Rope, whiteouts and cutscenes teach nothing (STATE bit 3: a map change counts as a warp only when you left from one of the old zone's warps to the new zone). Saved in `lua/b2mmo-warps.txt`. Tested in Nimbasa City (`test/t_doors.lua`: our own trip, a friend's, a flagged hop, two doors deep). Fly itself not walked in a test |
 | Windows package | ✅ `scripts/package.sh` zip; `Install Black 2 MMO.bat` (tested with scripted answers) writes `lua/b2mmo.ini` and `Play Black 2 MMO.bat` |
 
 ## Not tested yet
@@ -42,7 +43,6 @@ as the other player, on a completed save (8 badges, Nimbasa City).
 - **Live battles** (each player picks their own moves): needs the battle server's sync hooks found in
   Black 2's battle overlays (ORAS: `LiveBattle.cpp`).
 - **Trade evolutions** and a trade animation.
-- **"Ann is inside" on doors**: map changes aren't learned as warps yet (the no-warp bit is sent).
 - **Talking in the game's own text box** and a Battle/Trade menu there (ORAS runs its own script
   through the NPC-talk event); here talking is a notice and the rest is in the window.
 

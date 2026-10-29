@@ -36,13 +36,29 @@ K.start({ speed = 100 }, function(s, f)
   end
   if talkAt and f >= talkAt and f < talkAt + 4 then K.press({ A = true }) end
   if talkAt and f == talkAt + 10 then state(s, f, "talked " .. talkN); K.shot("talk" .. talkN) end
-  if talkN == 1 and talkAt and f == talkAt + 300 then state(s, f, "watching"); K.shot("watch_hp") end
+  if talkN == 1 and talkAt and f == talkAt + 300 then
+    state(s, f, "watching"); K.shot("watch_hp")
+    local w = ann and ann.watch
+    K.check(w and w.sides[0] and w.sides[1] and #w.sides[0] > 0 and #w.sides[1] > 0, "her battle received (both sides)")
+    K.check(watch.W.watching, "watching after talking to her")
+    K.check(ann and s.api.talkInfo[#s.api.talkInfo](ann, annId) ~= nil, "talkInfo says what she's battling")
+  end
   if talkN == 1 and talkAt and f > talkAt and (f - talkAt) % 60 == 0 and f < talkAt + 600 then K.shot("n" .. (f - talkAt)) end
   if talkN == 1 and talkAt and f == talkAt + 360 then fakeTab = true end
   if talkN == 1 and talkAt and f == talkAt + 362 then K.shot("tab"); fakeTab = false end
   if talkN == 1 and not battling and talkAt and f > talkAt + 30 and not over1 then over1 = f end
-  if over1 and f == over1 + 30 then state(s, f, "after her battle"); K.shot("over") end
+  if over1 and f == over1 + 30 then
+    state(s, f, "after her battle"); K.shot("over")
+    K.check(not watch.W.watching, "watching stops when her battle ends")
+  end
   if talkN == 2 and f == talkAt + 120 then K.press({ B = true }) end
-  if talkN == 2 and f == talkAt + 130 then state(s, f, "pressed B"); K.shot("pressed_b") end
-  if (talkN == 2 and f > talkAt + 140) or f > 3600 then client.exit() end
+  if talkN == 2 and f == talkAt + 130 then
+    state(s, f, "pressed B"); K.shot("pressed_b")
+    K.check(not watch.W.watching, "B stops watching")
+  end
+  if (talkN == 2 and f > talkAt + 140) or f > 3600 then
+    K.check(talkN == 2, "talked to her in two battles")
+    K.verdict()
+    client.exit()
+  end
 end)

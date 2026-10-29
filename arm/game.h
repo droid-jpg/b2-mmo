@@ -53,6 +53,10 @@ typedef struct {
 #define CopyActorPosAllAdd THUMB(0x0218ED98, void (*)(FieldActor *, VecFx32 *))
 #define GetActorFaceDir THUMB(0x02167078, u16 (*)(FieldActor *))
 #define FldAct_GetObjCode THUMB(0x02167018, u16 (*)(FieldActor *))
+// FieldActor (field_actor_internal.h): flags @0 (bit 0 in use), actorSystem @0x88, the move code's
+// work @0x94 (for comm actors a FldCommActLink: dir, pos, hidden, entry)
+#define FLDACT_SYSTEM_OFF 0x88
+#define FLDACT_MOVEWORK_OFF 0x94
 #define FldCommActSys_CreateActor \
     THUMB(0x0218AEB4, void (*)(FldCommActSys *, u32, u16, const u16 *, const VecFx32 *, const u32 *))
 #define FldCommActSys_DeleteActor THUMB(0x0218AF08, void (*)(FldCommActSys *, u32))
