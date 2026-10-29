@@ -30,8 +30,9 @@ as the other player, on a completed save (8 badges, Nimbasa City).
 - Two real BizHawk windows against each other (only the fake friend so far).
 - Friends in another zone of the overworld matrix (routes next to each other) — the code draws them
   (matrices 0 and 175), but no test walked between routes yet.
-- Bike and surf: the friend's object code follows theirs, so a cycling friend should show on the
-  bike; surfing has no surf Pokémon under them.
+- Bike and surf: friends are always shown walking as Nate or Rosa. Each client sends only those two
+  models (by the player's sex), because an actor made from the player's other object codes (bike,
+  surf, fishing, cutscene poses) could crash the game; the `ride` feature is where bikes and surfing go.
 - Warping into buildings with friends shown (actors persist across zone changes, flag 0x20; the Lua
   side releases them when zones differ).
 - Over the internet.

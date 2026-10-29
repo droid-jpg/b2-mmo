@@ -14,8 +14,7 @@ and speaks the same network protocol.
 
 ## What you can do
 
-- **See each other.** Friends on your map show up as their own trainer (Nate or Rosa, on their bike
-  too), walking, running and turning as they do in their game, with their name above their head.
+- **See each other.** Friends on your map show up as their own trainer (Nate or Rosa), walking, running and turning as they do in their game, with their name above their head.
   They block your way like any trainer.
 - **Talk to each other.** Walk up to a friend and press **A**: you see their greeting, and they
   see that you're talking to them.
