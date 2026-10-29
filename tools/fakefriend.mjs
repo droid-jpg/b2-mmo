@@ -48,8 +48,8 @@ const frame = (type) => { const b = Buffer.alloc(FRAME); b[0] = type; b.writeUIn
 const cstr = (b, o, n) => { const s = b.subarray(o, o + n); const z = s.indexOf(0); return s.subarray(0, z < 0 ? n : z).toString('latin1'); };
 const names = {};
 let myId = 0;
-// What plugins can change about us: busy (status bit 0), hold (stop walking), status (more status
-// bits, e.g. 8 = no warp), goto ({ x, z, dir }: stand there now; opt.zone/matrix/y change the map)
+// What plugins can change about us: busy (status bit 0), status (more STATE status bits, e.g. 8 =
+// no warp), hold (stop walking), goto ({ x, z, dir }: stand there now; opt.zone/matrix/y change the map)
 const me = { busy: false, hold: false, status: 0, goto: null };
 
 const sock = net.connect(opt.port, opt.server, () => {
@@ -154,7 +154,7 @@ setInterval(() => {
   s.writeUInt16LE(opt.zone, 4); s.writeUInt16LE(dir, 6);
   s.writeFloatLE(px, 8); s.writeFloatLE(opt.y, 12); s.writeFloatLE(pz, 16);
   s.writeUInt32LE(opt.matrix, 20); s.writeUInt32LE(++seq, 24);
-  s[36] = moving ? 0x10 : 0; s[37] = (opt.busy || me.busy ? 1 : 0) | (me.status & 0xfe); s.writeUInt16LE(opt.model, 38);
+  s[36] = moving ? 0x10 : 0; s[37] = (opt.busy || me.busy ? 1 : 0) | (me.status ?? 0); s.writeUInt16LE(opt.model, 38);
   s.writeUInt32LE((Date.now() - start) >>> 0, 40);
   sock.write(s);
 }, 66);

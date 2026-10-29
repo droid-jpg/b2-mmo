@@ -616,6 +616,10 @@ local function finishTrade()
   iw32(SH + 0x60, trade.mySlot)
   local partnerName = friends[trade.partner] and friends[trade.partner].name or "your friend"
   addNotice("Traded " .. monLabel(trade.myRaw) .. " to " .. partnerName .. " for " .. monLabel(trade.theirRaw) .. "!")
+  -- Features hear of it once the write is queued (trade evolutions): slot, what came in, what went out
+  for _, ft in ipairs(features) do
+    if ft.onTradeDone then ft.onTradeDone(trade.mySlot, trade.theirRaw, trade.myRaw, trade.partner) end
+  end
   trade.partner, trade.theirRaw, trade.myRaw, trade.mySlot, trade.accepted, trade.commitHash = nil, nil, nil, nil, false, nil
 end
 
@@ -830,13 +834,14 @@ end
 --   onFrame = { [T.X] = fn(f, id, fr) }  every received frame of that type, after the core
 --   onTalk(f, id) -> true       A was pressed facing friend f: return true to take it over
 --   buildForm(formId, y) -> y   add controls to the window from y down, return the next free y
+--   onTradeDone(slot, theirRaw, myRaw, partnerId)  a trade's Pokemon was queued into party slot
 -- api.actions is what talking to a friend can lead to: { label, run = fn(f, id) }, in order.
 -- api.talkInfo holds fn(f, id) -> lines or nil, extra things to say about a friend when talked to.
 local FEATURES = { "talk", "live", "watch", "evolve", "doors", "chat", "ride" }
 local api = {
   cfg = cfg, T = T, PARTY = PARTY, TRADE = TRADE, ADDR = ADDR, SH = SH, ITCM = ITCM, SB = SB, IT = IT,
   OBJ_HERO = OBJ_HERO, OBJ_HEROINE = OBJ_HEROINE, DIRV = DIRV, PKM = PKM,
-  net = net, me = me, friends = friends, trade = trade, battle = battle, form = form,
+  net = net, me = me, friends = friends, trade = trade, battle = battle, form = form, seen = seen,
   r8 = r8, r32 = r32, w32 = w32, ir32 = ir32, is32 = is32, iw32 = iw32, iw16 = iw16, inRam = inRam,
   readBytes = readBytes, irBytes = irBytes, iwBytes = iwBytes,
   frame = frame, send = send, cstr = cstr, pad = pad, now = now, say = say,
